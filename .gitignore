@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# uv / venvs
+.venv/
+venv/
+.env
+.envrc
+
+# Secrets
+*.key
+*.pem
+secrets/
+credentials.json
+
+# Media artifacts (don't commit generated content)
+media_cache/
+*.mp4
+*.mp3
+*.wav
+!tests/fixtures/*.mp4
+!tests/fixtures/*.mp3
+
+# Vector DB / RAG artifacts
+chroma_db/
+*.sqlite
+*.sqlite3
+embeddings_cache/
+
+# Obsidian vault clone (lives on disk, not in repo)
+vault/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
