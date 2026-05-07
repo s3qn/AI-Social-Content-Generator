@@ -18,6 +18,9 @@ venv/
 secrets/
 credentials.json
 
+# Cache
+cache/
+
 # Media artifacts (don't commit generated content)
 media_cache/
 *.mp4

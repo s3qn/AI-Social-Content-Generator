@@ -61,6 +61,8 @@ api_key = os.environ["ELEVENLABS_API_KEY"]
 `load_dotenv()` only needs to be called once per process, usually at the
 entrypoint of whatever script/module is running.
 
+also add APIFY's API key for other stuff with `APIFY_API_KEY`
+
 ## 5. Update `docs/SECRETS.md`
 
 Add a row to the "Currently held secrets" table so future-me remembers what
