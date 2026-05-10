@@ -7,11 +7,13 @@ import argparse
 
 
 def load_apify_api_key():
+    
     load_dotenv(find_dotenv())
     apify_api_key = os.getenv("APIFY_API_KEY")
     return apify_api_key
 
 def convert_to_json(data, handle):
+
     with open(Path(__file__).resolve().parents[3] / "cache" / f"{handle}-posts.json", "w") as f:
         json.dump(data, f, indent=2, default=str)
     return None
