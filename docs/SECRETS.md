@@ -106,3 +106,14 @@ If a key leaks or just on a regular schedule:
 5. Restart any running services that use it
 6. (No commit needed — `.env` isn't tracked)
 
+
+# Updates
+## Removed: ANTHROPIC_API_KEY (2026-05-10)
+
+Removed from `.env`. Project uses Claude Code's Max session (via 
+subprocess) for all AI calls — does not call api.anthropic.com directly.
+
+If `ANTHROPIC_API_KEY` is set in `.env`, `subprocess.run(["claude", ...])`
+inherits it and Claude Code attempts to use the external key instead of 
+the Max session, producing "Invalid API key · Fix external API key" 
+errors. **Do not re-add this variable.**
