@@ -98,7 +98,7 @@ def main():
     limit = args.post_number
 
     # Scrape Content
-    scrape_to_cache(user, limit)
+    get_profile(user, limit)
 
 if __name__ == "__main__":
     main()
