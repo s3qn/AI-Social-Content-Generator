@@ -3,8 +3,7 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
-from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, cancel, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, message_claude, profile_analyzer
+from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, cancel, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, profile_analyzer, message_bot
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -16,22 +15,6 @@ def load_telegram_bot_token():
     load_dotenv(find_dotenv())
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     return telegram_token
-
-# Detect any message and pass it into claude!
-
-@require_auth
-async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action="typing",
-    )
-
-    text_from_user = update.message.text
-    claude_reply = message_claude(text_from_user)
-    
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=claude_reply.stdout)
-
 
 # Main Guard
 if __name__ == '__main__':

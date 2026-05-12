@@ -1,3 +1,4 @@
+''' Connecting the bot with claude '''
 import subprocess
 
 def message_claude(prompt):

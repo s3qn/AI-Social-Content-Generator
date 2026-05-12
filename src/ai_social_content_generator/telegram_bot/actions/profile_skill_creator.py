@@ -1,5 +1,5 @@
 from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.actions import message_claude
+from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from telegram import Update
 from telegram.ext import ContextTypes
 from pathlib import Path
