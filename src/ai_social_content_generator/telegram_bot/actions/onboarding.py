@@ -179,7 +179,7 @@ async def confirm_niche(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎉 Onboarding complete!\n\n"
             f"Handle: @{handle}\n"
             f"Niche: {niche_summary}\n\n"
-            f"(Main menu coming soon)"
+            f"To open the menu, write any message in the chat and it will open the menu!"
         )
         return ConversationHandler.END
     

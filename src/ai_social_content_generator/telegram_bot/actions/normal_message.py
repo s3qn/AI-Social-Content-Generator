@@ -1,5 +1,6 @@
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import is_onboarded
+from ai_social_content_generator.telegram_bot.actions.menu import menu_popup
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -19,11 +20,5 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Onboarded user — show main menu
-    keyboard = [[
-        InlineKeyboardButton("📊 Analyze my profile", callback_data="menu_analyze"),
-    ]]
-    await update.message.reply_text(
-        "What would you like to do?",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
+    await menu_popup(update, context)
+
