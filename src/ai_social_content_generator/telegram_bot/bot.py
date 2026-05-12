@@ -4,27 +4,16 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
 import subprocess
-from functools import wraps
 from pathlib import Path
 from ai_social_content_generator.telegram_bot.users import is_onboarded
 import json
 from ai_social_content_generator.ingestion.instagram_scraper import get_profile
-
-# USER WHITELIST
-USER_WHITELIST = [6552355280]
+from ai_social_content_generator.telegram_bot.auth import require_auth, USER_WHITELIST
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-
-def require_auth(func):
-    @wraps(func)
-    async def wrapped(update, context):
-        if update.effective_user.id not in USER_WHITELIST:
-            return
-        await func(update, context)
-    return wrapped
 
 def message_claude(prompt):
     result = subprocess.run(
