@@ -1,14 +1,14 @@
 import logging
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
 import subprocess
 from pathlib import Path
-from ai_social_content_generator.telegram_bot.users import is_onboarded
-import json
-from ai_social_content_generator.ingestion.instagram_scraper import get_profile
 from ai_social_content_generator.telegram_bot.auth import require_auth, USER_WHITELIST
+from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, cancel, WAITING_FOR_HANDLE, CONFIRMING_HANDLE
+
+
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,7 +18,8 @@ logging.basicConfig(
 def message_claude(prompt):
     result = subprocess.run(
 
-        ["claude", "--print", prompt],
+        ["claude", "--print"],
+        input=prompt,
         capture_output=True,
         text=True,
         timeout=30,
@@ -100,88 +101,6 @@ def load_telegram_bot_token():
     load_dotenv(find_dotenv())
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     return telegram_token
-
-##############
-# Onboarding #
-##############
-
-WAITING_FOR_HANDLE, CONFIRMING_HANDLE = range(2)
-
-
-async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    user_id = update.effective_user.id
-    if user_id not in USER_WHITELIST:
-        await update.message.reply_text("Sorry, Please try again later")
-        return ConversationHandler.END
-    
-    if is_onboarded(user_id):
-        await update.message.reply_text("WELCOME TO MY APP!!!!")
-        return ConversationHandler.END
-
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Hello, I am Stella, your social media assistant to boost your social media presence by 10x!!!\n\nLet's get you onboarded, please send me your instagram handle to get started:\nFORMAT: '[Handle] or @[Handle] (e.g. @nasa/nasa)'")
-    return WAITING_FOR_HANDLE
-
-
-
-async def receive_handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    handle = update.message.text.lstrip("@").strip()
-
-    context.user_data["handle"] = handle
-
-    await update.message.reply_text(
-        f"Got it: @{handle}\n\nGive me a moment please..."
-    )
-
-    profile = get_profile(handle, limit=1)
-
-    if profile is None:
-        await update.message.reply_text("Handle doesn't exist, please type your handle again\nFORMAT: '[Handle] or @[Handle] (e.g. @nasa/nasa)'")
-        return WAITING_FOR_HANDLE
-    
-    bio = profile.get("biography", "(no bio)")
-    pic_url = profile.get("profilePicUrl")
-
-    keyboard = [
-        [InlineKeyboardButton("✅ Yes", callback_data="handle_yes")],
-        [InlineKeyboardButton("❌ No", callback_data="handle_no")],
-        [InlineKeyboardButton("Cancel", callback_data="handle_cancel")]
-    ]
-    await update.message.reply_photo(
-        photo=pic_url,
-        caption=f"@{handle}\n\n{bio}\n\nIs this you?",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-    return CONFIRMING_HANDLE
-
-
-async def confirm_handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    
-    # This fires when mom taps a button (not when she types text)
-    query = update.callback_query
-    await query.answer()  # acknowledge the tap
-    
-    handle = context.user_data["handle"]  # ← here's how we get it
-    
-    if query.data == "handle_yes":
-        await query.edit_message_caption(caption=f"✓ Confirmed @{handle}. (Next step coming...)")
-        return ConversationHandler.END  # for now; later → WAITING_FOR_NICHE
-    
-    elif query.data == "handle_no":
-        await query.edit_message_caption(caption="No problem. Send me your handle again:")
-        return WAITING_FOR_HANDLE  # back to handle entry
-    
-    elif query.data == "handle_cancel":
-        await query.edit_message_caption(caption="No problem. use /start on onboard again")
-        return ConversationHandler.END  # back to handle entry
-
-    return ConversationHandler.END
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Onboarding cancelled.")
-    return ConversationHandler.END
 
 # Detect any message and pass it into claude!
 
