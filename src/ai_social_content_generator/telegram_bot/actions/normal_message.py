@@ -1,6 +1,6 @@
 from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.call_claude import message_claude
-from telegram import Update
+from ai_social_content_generator.telegram_bot.users import is_onboarded
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
 ##########################
@@ -11,13 +11,19 @@ from telegram.ext import ContextTypes
 
 @require_auth
 async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action="typing",
-    )
-
-    text_from_user = update.message.text
-    claude_reply = message_claude(text_from_user)
+    user_id = update.effective_user.id
     
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=claude_reply.stdout)
+    if not is_onboarded(user_id):
+        await update.message.reply_text(
+            "Please tap /start to set up your account first."
+        )
+        return
+    
+    # Onboarded user — show main menu
+    keyboard = [[
+        InlineKeyboardButton("📊 Analyze my profile", callback_data="menu_analyze"),
+    ]]
+    await update.message.reply_text(
+        "What would you like to do?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )

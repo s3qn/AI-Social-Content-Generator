@@ -3,7 +3,7 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
-from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, cancel, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, profile_analyzer, message_bot
+from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, receive_niche, confirm_niche, cancel, profile_analyzer, message_bot, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, WAITING_FOR_NICHE, CONFIRMING_NICHE
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -26,7 +26,9 @@ if __name__ == '__main__':
         entry_points=[CommandHandler('start', start_bot)],
         states={
             WAITING_FOR_HANDLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_handle)],
-            CONFIRMING_HANDLE: [CallbackQueryHandler(confirm_handle)]
+            CONFIRMING_HANDLE: [CallbackQueryHandler(confirm_handle)],
+            WAITING_FOR_NICHE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_niche)],
+            CONFIRMING_NICHE: [CallbackQueryHandler(confirm_niche)]
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )

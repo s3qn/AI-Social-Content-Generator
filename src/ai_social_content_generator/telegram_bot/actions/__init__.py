@@ -6,4 +6,4 @@ from .profile_skill_creator import profile_analyzer
 from .normal_message import message_bot
 
 # States
-from .onboarding import WAITING_FOR_HANDLE, CONFIRMING_HANDLE, receive_handle, confirm_handle, cancel
+from .onboarding import WAITING_FOR_HANDLE, CONFIRMING_HANDLE, WAITING_FOR_NICHE, CONFIRMING_NICHE, receive_handle, confirm_handle, receive_niche, confirm_niche, cancel
