@@ -32,10 +32,14 @@ async def _run_analysis(
     profile_data = profile_path.read_text(encoding='utf-8')
     posts_data = posts_path.read_text(encoding='utf-8')
 
+    posts_list = json.loads(posts_data)
+    engagement_digest = build_engagement_digest(posts_list, top_n=3)
+    logger.info(engagement_digest)
+
     if niche:
-        prompt = build_prompt_with_niche(handle, niche, profile_data, posts_data)
+        prompt = build_prompt_with_niche(handle, niche, profile_data, engagement_digest)
     else:
-        prompt = build_prompt_with_bio(handle, profile_data, posts_data)
+        prompt = build_prompt_with_bio(handle, profile_data, engagement_digest)
 
     claude_reply = message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
@@ -124,6 +128,8 @@ def _format_summary(analysis: dict) -> str:
     audience = analysis.get("target_audience", "—")
     voice = analysis.get("voice", [])
     themes = analysis.get("recurring_themes", [])
+    top_posts = analysis.get("top_posts", [])
+    patterns = analysis.get("engagement_patterns", [])
 
     if niche_source == "user_provided":
         source_label = " (your stated niche)"
@@ -138,7 +144,7 @@ def _format_summary(analysis: dict) -> str:
     else:
         themes_str = str(themes)
 
-    return (
+    summary = (
         f"📊 Analysis for @{handle}\n\n"
         f"Niche{source_label}:\n{niche}\n\n"
         f"Account Owner:\n{owner}\n\n"
@@ -147,13 +153,77 @@ def _format_summary(analysis: dict) -> str:
         f"Recurring Themes:\n{themes_str}"
     )
 
+    if isinstance(top_posts, list) and top_posts:
+        post_blocks: list[str] = []
+        for post in top_posts:
+            if not isinstance(post, dict):
+                continue
+            post_type = post.get("type", "Post")
+            score = post.get("engagement_score", 0)
+            why = post.get("why_it_worked", "")
+            score_str = f"{score:,}" if isinstance(score, (int, float)) else str(score)
+            unit = "views" if post_type == "Video" else "likes"
+            block = f"- {post_type} — {score_str} {unit}"
+            if why:
+                block += f"\n  Why it worked: {why}"
+            post_blocks.append(block)
+        if post_blocks:
+            summary += "\n\n📈 Top-Performing Content:\n\n" + "\n\n".join(post_blocks)
 
-def build_prompt_with_bio(handle: str, profile_data: str, posts_data: str) -> str:
+    if patterns:
+        if isinstance(patterns, list):
+            patterns_str = "\n".join(f"• {p}" for p in patterns)
+        else:
+            patterns_str = str(patterns)
+        summary += f"\n\n🎯 What Works on Your Account:\n{patterns_str}"
+
+    return summary
+
+
+def build_engagement_digest(posts: list[dict], top_n: int = 3) -> str:
+    if not posts:
+        return "No posts available."
+
+    def score(post: dict) -> int:
+        if post.get("type") == "Video":
+            return post.get("videoPlayCount") or post.get("likesCount") or 0
+        return post.get("likesCount") or 0
+
+    ranked = sorted(posts, key=score, reverse=True)[:top_n]
+
+    sections: list[str] = []
+    for i, post in enumerate(ranked, start=1):
+        post_type = post.get("type", "Unknown")
+        likes = post.get("likesCount") or 0
+        comments = post.get("commentsCount") or 0
+
+        parts = [f"{likes:,} likes", f"{comments:,} comments"]
+        if post_type == "Video":
+            views = post.get("videoPlayCount")
+            if views:
+                parts.append(f"{views:,} views")
+
+        header = f"### Post {i} ({post_type}) — " + ", ".join(parts)
+
+        caption = post.get("caption") or ""
+        if not caption:
+            caption_line = "(no caption)"
+        elif len(caption) > 150:
+            caption_line = caption[:150] + "..."
+        else:
+            caption_line = caption
+
+        sections.append(f"{header}\nCaption: {caption_line}")
+
+    return "TOP-PERFORMING POSTS (sorted by engagement):\n\n" + "\n\n".join(sections)
+
+
+def build_prompt_with_bio(handle: str, profile_data: str, engagement_digest: str) -> str:
 
     return f'''You are a niche analyzer.
 
 Your task: analyze an Instagram profile to identify niche, audience, voice,
-and recurring themes.
+recurring themes, and what drives engagement.
 
 CRITICAL INSTRUCTIONS:
 - The bio field is the authoritative source for niche. Trust it.
@@ -174,6 +244,19 @@ before or after. The object must have exactly these keys:
   "target_audience": "<2-3 sentences inferred from content>",
   "voice": ["<descriptor>", "<descriptor>", "<descriptor>"],
   "recurring_themes": ["<theme>", "<theme>", "<theme>"],
+  "top_posts": [
+    {{
+      "type": "<post type from digest>",
+      "engagement_score": <number from digest>,
+      "caption_excerpt": "<first 150 chars of caption, with ... if truncated>",
+      "why_it_worked": "<1-2 sentences>"
+    }}
+  ],
+  "engagement_patterns": [
+    "<pattern observation 1>",
+    "<pattern observation 2>",
+    "<pattern observation 3>"
+  ],
   "analyzed_at": "<ISO 8601 timestamp>"
 }}
 
@@ -184,11 +267,36 @@ before or after. The object must have exactly these keys:
 PROFILE DATA:
 {profile_data}
 
-POSTS DATA:
-{posts_data}'''
+ENGAGEMENT ANALYSIS:
+The top-performing posts on this account are listed below. Your task
+for the engagement section:
+
+For each top post, write a "why_it_worked" reasoning (1-2 sentences).
+Look at:
+- The caption style (length, tone, hook style)
+- The post type (image vs video vs carousel)
+- The topic angle (specific event, evergreen advice, story)
+- Any concrete elements (dates, numbers, names, products)
+
+Then identify 3-5 engagement_patterns — observations about what
+consistently works on this account.
+
+CRITICAL:
+- Do NOT invent engagement reasons not supported by the data.
+- If only 1-3 posts are available, note "limited data" in patterns.
+- Reasoning describes WHY the post worked, not just WHAT it was.
+- engagement_score must match the digest exactly.
+- top_posts must be ordered the same as the digest.
+- caption_excerpt is the first 150 chars from each post's caption,
+  truncated with "..." if cut off.
+- If the digest below shows "No posts available": top_posts must be []
+  and engagement_patterns must be [].
+
+TOP-PERFORMING POSTS:
+{engagement_digest}'''
 
 
-def build_prompt_with_niche(handle: str, niche: str, profile_data: str, posts_data: str) -> str:
+def build_prompt_with_niche(handle: str, niche: str, profile_data: str, engagement_digest: str) -> str:
 
     return f'''You are analyzing an Instagram account on behalf of its owner.
 
@@ -198,7 +306,7 @@ The account owner has stated their niche as:
 Treat this niche as authoritative ground truth. Do NOT redetermine or
 contradict the niche based on bio or caption content. Your job is to
 analyze HOW this account expresses this niche through audience, voice,
-and themes.
+themes, and what drives engagement.
 
 CRITICAL INSTRUCTIONS:
 - niche field: use the user's stated niche above, do NOT infer a different one.
@@ -219,6 +327,19 @@ before or after. The object must have exactly these keys:
   "target_audience": "<2-3 sentences inferred from content + the stated niche>",
   "voice": ["<descriptor>", "<descriptor>", "<descriptor>"],
   "recurring_themes": ["<theme>", "<theme>", "<theme>"],
+  "top_posts": [
+    {{
+      "type": "<post type from digest>",
+      "engagement_score": <number from digest>,
+      "caption_excerpt": "<first 150 chars of caption, with ... if truncated>",
+      "why_it_worked": "<1-2 sentences>"
+    }}
+  ],
+  "engagement_patterns": [
+    "<pattern observation 1>",
+    "<pattern observation 2>",
+    "<pattern observation 3>"
+  ],
   "analyzed_at": "<ISO 8601 timestamp>"
 }}
 
@@ -230,5 +351,30 @@ before or after. The object must have exactly these keys:
 PROFILE DATA:
 {profile_data}
 
-POSTS DATA:
-{posts_data}'''
+ENGAGEMENT ANALYSIS:
+The top-performing posts on this account are listed below. Your task
+for the engagement section:
+
+For each top post, write a "why_it_worked" reasoning (1-2 sentences).
+Look at:
+- The caption style (length, tone, hook style)
+- The post type (image vs video vs carousel)
+- The topic angle (specific event, evergreen advice, story)
+- Any concrete elements (dates, numbers, names, products)
+
+Then identify 3-5 engagement_patterns — observations about what
+consistently works on this account.
+
+CRITICAL:
+- Do NOT invent engagement reasons not supported by the data.
+- If only 1-3 posts are available, note "limited data" in patterns.
+- Reasoning describes WHY the post worked, not just WHAT it was.
+- engagement_score must match the digest exactly.
+- top_posts must be ordered the same as the digest.
+- caption_excerpt is the first 150 chars from each post's caption,
+  truncated with "..." if cut off.
+- If the digest below shows "No posts available": top_posts must be []
+  and engagement_patterns must be [].
+
+TOP-PERFORMING POSTS:
+{engagement_digest}'''
