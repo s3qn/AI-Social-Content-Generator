@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
 from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, receive_niche, confirm_niche, cancel, profile_analyzer, message_bot, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, WAITING_FOR_NICHE, CONFIRMING_NICHE
-from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route
+from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route, ideas_submenu_route
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -38,10 +38,13 @@ if __name__ == '__main__':
 
     analyze_handler = CommandHandler('analyze', profile_analyzer)
     message_handle = MessageHandler(filters.TEXT & ~filters.COMMAND, message_bot)
-    menu_analyze = CallbackQueryHandler(main_menu_route)
+    menu_analyze = CallbackQueryHandler(main_menu_route, pattern="^menu_")
 
     application.add_handler(message_handle)
     application.add_handler(analyze_handler)
     application.add_handler(menu_analyze)
+    application.add_handler(
+        CallbackQueryHandler(ideas_submenu_route, pattern="^ideas_")
+    )
     application.run_polling()
 

@@ -26,7 +26,7 @@ async def _run_analysis(
     posts_path = Path(f"cache/{handle}-posts.json")
 
     if not profile_path.exists() or not posts_path.exists():
-        await update.message.reply_text(f"No cached data for @{handle}, make sure data is cached!")
+        await context.bot.send_message(chat_id=update.effective_chat.id,text=f"No cached data for @{handle}, make sure data is cached!")
         return
 
     profile_data = profile_path.read_text(encoding='utf-8')
@@ -88,7 +88,7 @@ async def analyze_from_vault(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data = load_user(user_id)
 
     if user_data is None or "handle" not in user_data:
-        await update.message.reply_text("No handle found in your account. Please onboard first.")
+        await context.bot.send_message(chat_id=update.effective_chat.id,text="No handle found in your account. Please onboard first.")
         return
 
     handle = user_data["handle"]
