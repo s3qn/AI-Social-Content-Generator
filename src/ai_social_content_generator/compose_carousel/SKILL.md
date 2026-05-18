@@ -62,6 +62,13 @@ End with a question for engagement. Line breaks between sections.]
 ## Hashtags
 [8-12 hashtags. Niche-specific + broader reach. Avoid only-massive-tags.]
 
+## Attribution
+[REQUIRED if competitor data was provided in the input above. 
+List each competitor whose pattern influenced this carousel:
+- @handle — specific pattern you borrowed
+- @handle — specific pattern you borrowed
+If no competitor data was provided, write: "None used."]
+
 CRITICAL RULES (do not break these):
 1. Stay in the stated niche. Do not drift.
 2. Do NOT invent credentials, years of experience, client stories, or 
@@ -74,7 +81,21 @@ CRITICAL RULES (do not break these):
 7. Voice should feel like the creator wrote it.
 8. Build on what's worked — don't copy. Pattern-match tone and direction, 
    then bring a fresh angle.
+9. Competitor data is for STRUCTURE only, not for content. Extract 
+   patterns (hook style, slide flow, CTA type, topic framing). Do NOT 
+   borrow topics, examples, or specific claims from competitor posts. 
+   Form from competitors, substance from the creator's niche.
+10. The Attribution section is MANDATORY whenever competitor data is 
+    present in the input. You must list which competitors influenced 
+    your output and the specific structural pattern from each. Do not 
+    omit this section. Do not summarize patterns vaguely — name the 
+    handle and the specific element you borrowed (e.g., "@nasa — 
+    countdown-style hook structure").
+
 
 TOP-PERFORMING CONTENT (study what's worked on this account):
 
 {engagement_digest}
+
+{competitor_section}
+
