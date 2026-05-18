@@ -10,6 +10,6 @@ def require_auth(func):
     async def wrapped(update, context):
         if update.effective_user.id not in USER_WHITELIST:
             return
-        await func(update, context)
+        return await func(update, context)
     return wrapped
 

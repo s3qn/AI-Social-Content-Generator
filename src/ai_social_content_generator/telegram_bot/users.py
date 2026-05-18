@@ -12,10 +12,12 @@ def is_onboarded(user_id: int) -> bool:
 
 def load_user(user_id: int) -> None | dict:
     path = user_path(user_id)
-    
+
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.setdefault("competitors", [])
+    return data
 
 def save_user(user_id: int, data: dict) -> None:
     USERS_DIR.mkdir(exist_ok=True)

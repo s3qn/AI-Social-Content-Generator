@@ -4,7 +4,12 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
 from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, receive_niche, confirm_niche, cancel, profile_analyzer, message_bot, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, WAITING_FOR_NICHE, CONFIRMING_NICHE
-from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route, ideas_submenu_route
+from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route, ideas_submenu_route, competitors_submenu_route
+from ai_social_content_generator.telegram_bot.actions.competitors import (
+    competitor_add_start,
+    competitor_receive_handle,
+    WAITING_FOR_COMPETITOR_HANDLE,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -36,6 +41,19 @@ if __name__ == '__main__':
 
     application.add_handler(conv_handler)
 
+    competitor_add_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(competitor_add_start, pattern="^competitor_add$")
+        ],
+        states={
+            WAITING_FOR_COMPETITOR_HANDLE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, competitor_receive_handle)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(competitor_add_handler)
+
     analyze_handler = CommandHandler('analyze', profile_analyzer)
     message_handle = MessageHandler(filters.TEXT & ~filters.COMMAND, message_bot)
     menu_analyze = CallbackQueryHandler(main_menu_route, pattern="^menu_")
@@ -45,6 +63,9 @@ if __name__ == '__main__':
     application.add_handler(menu_analyze)
     application.add_handler(
         CallbackQueryHandler(ideas_submenu_route, pattern="^ideas_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(competitors_submenu_route, pattern= "^competitor_")
     )
     application.run_polling()
 
