@@ -27,7 +27,7 @@ def load_telegram_bot_token():
 if __name__ == '__main__':
 
     token = load_telegram_bot_token()
-    application = ApplicationBuilder().token(token).build()
+    application = ApplicationBuilder().token(token).concurrent_updates(True).build()
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start_bot)],

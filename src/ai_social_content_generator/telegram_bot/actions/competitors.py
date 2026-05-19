@@ -99,7 +99,7 @@ async def competitor_receive_handle(update: Update, context: ContextTypes.DEFAUL
     engagement_digest = build_engagement_digest(posts_list, top_n=3)
     prompt = build_prompt_with_bio(handle, profile_data, engagement_digest)
 
-    claude_reply = message_claude(prompt)
+    claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 

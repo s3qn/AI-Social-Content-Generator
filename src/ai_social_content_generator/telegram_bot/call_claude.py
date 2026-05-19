@@ -1,19 +1,40 @@
 ''' Connecting the bot with claude '''
-import subprocess
+import asyncio
+from dataclasses import dataclass
 
 
-def message_claude(prompt, timeout=300):
+@dataclass
+class ClaudeResult:
+    stdout: str
+    stderr: str
+    returncode: int
+
+
+async def message_claude(prompt, timeout=300):
+    process = await asyncio.create_subprocess_exec(
+        "claude",
+        "--print",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
     try:
-        result = subprocess.run(
-            ["claude", "--print"],
-            input=prompt,
-            capture_output=True,
-            text=True,
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(input=prompt.encode("utf-8")),
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired:
-        return f"Claude Error: timed out after {timeout}s"
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        return ClaudeResult(
+            stdout="",
+            stderr=f"Timed out after {timeout}s",
+            returncode=-1,
+        )
 
-    if result.returncode != 0:
-        result = f"Claude Error: {result.stderr}"
-    return result
+    return ClaudeResult(
+        stdout=stdout_bytes.decode("utf-8", errors="replace"),
+        stderr=stderr_bytes.decode("utf-8", errors="replace"),
+        returncode=process.returncode if process.returncode is not None else -1,
+    )

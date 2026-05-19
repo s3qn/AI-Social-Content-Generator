@@ -55,7 +55,7 @@ async def compose_carousel_from_vault(update: Update, context: ContextTypes.DEFA
     formatted["competitor_section"] = competitor_section
     prompt = skill_template.format(**formatted)
 
-    claude_reply = message_claude(prompt)
+    claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 

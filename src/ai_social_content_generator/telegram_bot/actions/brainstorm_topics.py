@@ -103,7 +103,7 @@ async def brainstorm_topics_from_vault(update: Update, context: ContextTypes.DEF
     skill_template = SKILL_PATH.read_text(encoding="utf-8")
     prompt = skill_template.format(**ctx)
 
-    claude_reply = message_claude(prompt)
+    claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 
@@ -236,7 +236,7 @@ async def brainstorm_own_process(
         template = EXPAND_PATH.read_text(encoding="utf-8")
         prompt = template.format(idea=idea, **base_ctx)
 
-    claude_reply = message_claude(prompt)
+    claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 

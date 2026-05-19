@@ -87,7 +87,7 @@ async def receive_niche(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # Give it to claude
-    claude_reply = message_claude(
+    claude_reply = await message_claude(
         
         prompt=
             f'''

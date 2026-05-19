@@ -41,7 +41,7 @@ async def _run_analysis(
     else:
         prompt = build_prompt_with_bio(handle, profile_data, engagement_digest)
 
-    claude_reply = message_claude(prompt)
+    claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
 
     if not raw_output:
