@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
 from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, receive_niche, confirm_niche, cancel, profile_analyzer, message_bot, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, WAITING_FOR_NICHE, CONFIRMING_NICHE
-from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route, ideas_submenu_route, competitors_submenu_route
+from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route, ideas_submenu_route, competitors_submenu_route, brainstorm_submenu_route
 from ai_social_content_generator.telegram_bot.actions.competitors import (
     competitor_add_start,
     competitor_receive_handle,
@@ -66,6 +66,9 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(competitors_submenu_route, pattern= "^competitor_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(brainstorm_submenu_route, pattern="^brainstorm_")
     )
     application.run_polling()
 

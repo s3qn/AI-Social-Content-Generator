@@ -1,5 +1,5 @@
 from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.users import is_onboarded, load_user
+from ai_social_content_generator.telegram_bot.users import is_onboarded, load_user, save_user
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import analyze_from_vault
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import compose_carousel_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
@@ -64,8 +64,8 @@ async def ideas_submenu_show(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     keyboard = [
         [InlineKeyboardButton("📜 Carousel post", callback_data="ideas_carousel")],
+        [InlineKeyboardButton("💭 Brainstorm", callback_data="ideas_brainstorm")],
         [InlineKeyboardButton("🎥 Reel ideas", callback_data="ideas_reel")],
-        [InlineKeyboardButton("💭 Just brainstorm", callback_data="ideas_brainstorm")],
         [InlineKeyboardButton("← Back", callback_data="ideas_back")],
     ]
     await query.edit_message_text(
@@ -85,7 +85,7 @@ async def ideas_submenu_route(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif query.data == "ideas_reel":
         await query.edit_message_text("🎥 Reel ideas coming soon!")
     elif query.data == "ideas_brainstorm":
-        await query.edit_message_text("💭 Brainstorm coming soon!")
+        await brainstorm_submenu_show(update, context)
     elif query.data == "ideas_back":
         await query.edit_message_text(
             "What would you like to do?",
@@ -168,3 +168,111 @@ async def competitors_submenu_route(update: Update, context: ContextTypes.DEFAUL
             "What would you like to do?",
             reply_markup=_main_menu_keyboard(),
         )
+
+
+@require_auth
+async def brainstorm_submenu_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    user_data = load_user(user_id)
+    topics = user_data.get("topics", []) if user_data else []
+
+    if not topics:
+        message = "💭 Your Topics:\n\nNo topics yet."
+    else:
+        lines = []
+        for i, topic in enumerate(topics, start=1):
+            core = topic.get("core_idea", "")
+            headlines_count = len(topic.get("headlines", []))
+            if headlines_count > 0:
+                marker = f" ({headlines_count} headlines)"
+            else:
+                marker = ""
+            lines.append(f"{i}. {core}{marker}")
+        message = "💭 Your Topics:\n\n" + "\n".join(lines)
+
+    keyboard = [
+        [InlineKeyboardButton("➕ Brainstorm new ideas", callback_data="brainstorm_new")],
+        [InlineKeyboardButton("✨ Generate headlines for all", callback_data="brainstorm_headlines_all")],
+        [InlineKeyboardButton("🗑️ Remove topic", callback_data="brainstorm_remove")],
+        [InlineKeyboardButton("← Back", callback_data="brainstorm_back")],
+    ]
+
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+
+    if query.data.startswith("brainstorm_rm_"):
+        index_str = query.data.removeprefix("brainstorm_rm_")
+        try:
+            index = int(index_str)
+        except ValueError:
+            return
+        user_data = load_user(user_id)
+        topics = user_data.get("topics", []) if user_data else []
+        if 0 <= index < len(topics):
+            topics.pop(index)
+            save_user(user_id, user_data)
+        await brainstorm_submenu_show(update, context)
+        return
+
+    if query.data == "brainstorm_new":
+        await query.edit_message_text("Brainstorm coming in Phase 3...")
+
+    elif query.data == "brainstorm_headlines_all":
+        user_data = load_user(user_id)
+        topics = user_data.get("topics", []) if user_data else []
+        if not topics:
+            keyboard = [[InlineKeyboardButton("← Back", callback_data="brainstorm_back")]]
+            await query.edit_message_text(
+                "No topics yet. Tap 'Brainstorm new ideas' first.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            return
+        await query.edit_message_text("Generate headlines coming in Phase 4...")
+
+    elif query.data == "brainstorm_remove":
+        await brainstorm_remove_buttons(update, context)
+
+    elif query.data == "brainstorm_back":
+        await ideas_submenu_show(update, context)
+
+
+@require_auth
+async def brainstorm_remove_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    user_id = update.effective_user.id
+    user_data = load_user(user_id)
+    topics = user_data.get("topics", []) if user_data else []
+
+    if not topics:
+        keyboard = [[InlineKeyboardButton("← Back", callback_data="brainstorm_back")]]
+        await query.edit_message_text(
+            "No topics to remove.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    buttons = [
+        InlineKeyboardButton(str(i + 1), callback_data=f"brainstorm_rm_{i}")
+        for i in range(len(topics))
+    ]
+    keyboard = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
+    keyboard.append([InlineKeyboardButton("← Back", callback_data="brainstorm_back")])
+
+    await query.edit_message_text(
+        "Tap a number to remove:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
