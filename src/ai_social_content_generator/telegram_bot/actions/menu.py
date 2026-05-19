@@ -4,6 +4,7 @@ from ai_social_content_generator.telegram_bot.actions.profile_skill_creator impo
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import compose_carousel_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
 from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault, brainstorm_own_process
+from ai_social_content_generator.telegram_bot.actions.generate_headlines import generate_headlines_for_all
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -253,7 +254,7 @@ async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return
-        await query.edit_message_text("Generate headlines coming in Phase 4...")
+        await generate_headlines_for_all(update, context)
 
     elif query.data == "brainstorm_remove":
         await brainstorm_remove_buttons(update, context)

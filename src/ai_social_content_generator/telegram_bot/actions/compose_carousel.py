@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from telegram import Update
@@ -121,36 +122,113 @@ def _is_empty_attribution(text: str) -> bool:
     return False
 
 
+def _parse_iso_timestamp(ts) -> datetime | None:
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _filter_posts_by_age(posts: list[dict], days: int) -> list[dict]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    result: list[dict] = []
+    for post in posts:
+        if not isinstance(post, dict):
+            continue
+        ts = _parse_iso_timestamp(post.get("timestamp"))
+        if ts is None:
+            continue
+        if ts >= cutoff:
+            result.append(post)
+    return result
+
+
+def _engagement_score(post: dict) -> int:
+    if post.get("type") == "Video":
+        return max(post.get("videoPlayCount") or 0, post.get("likesCount") or 0, 0)
+    return max(post.get("likesCount") or 0, 0)
+
+
+def _top_n_by_engagement(posts: list[dict], n: int) -> list[dict]:
+    return sorted(posts, key=_engagement_score, reverse=True)[:n]
+
+
+def _caption_excerpt(caption, max_len: int = 150) -> str:
+    if not caption or not isinstance(caption, str):
+        return ""
+    flat = " ".join(caption.split())
+    if len(flat) <= max_len:
+        return flat
+    return flat[:max_len] + "..."
+
+
+def _format_recent_block(handle: str, posts: list[dict]) -> str:
+    lines: list[str] = []
+    for post in posts:
+        ptype = post.get("type", "Post")
+        likes = max(post.get("likesCount") or 0, 0)
+        excerpt = _caption_excerpt(post.get("caption"))
+        if ptype == "Video":
+            views = max(post.get("videoPlayCount") or 0, 0)
+            meta = f"{ptype}, {likes:,} likes, {views:,} views"
+        else:
+            meta = f"{ptype}, {likes:,} likes"
+        lines.append(f"- Post ({meta}): {excerpt}")
+    return f"### @{handle}\n" + "\n".join(lines)
+
+
+def _format_analysis_fallback_block(handle: str, top_posts: list[dict]) -> str:
+    lines: list[str] = []
+    for post in top_posts:
+        if not isinstance(post, dict):
+            continue
+        excerpt = post.get("caption_excerpt", "")
+        why = post.get("why_it_worked", "")
+        lines.append(f"- Post: {excerpt}\n  Why: {why}")
+    if not lines:
+        return ""
+    return f"### @{handle}\n" + "\n".join(lines)
+
+
+def _competitor_block(handle: str) -> str:
+    posts_path = Path(f"cache/{handle}-posts.json")
+    if posts_path.exists():
+        try:
+            posts = json.loads(posts_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            posts = []
+        if isinstance(posts, list):
+            recent = _filter_posts_by_age(posts, days=14)
+            top = _top_n_by_engagement(recent, n=3)
+            if top:
+                return _format_recent_block(handle, top)
+
+    analysis_path = Path(f"cache/{handle}-analysis.json")
+    if not analysis_path.exists():
+        return ""
+    try:
+        analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return ""
+
+    top_posts = analysis.get("top_posts", [])
+    if not isinstance(top_posts, list):
+        return ""
+
+    return _format_analysis_fallback_block(handle, top_posts)
+
+
 def build_competitor_section(competitor_handles: list[str]) -> str:
     if not competitor_handles:
         return ""
 
     blocks: list[str] = []
     for handle in competitor_handles:
-        analysis_path = Path(f"cache/{handle}-analysis.json")
-        if not analysis_path.exists():
-            continue
-        try:
-            analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-
-        top_posts = analysis.get("top_posts", [])
-        if not isinstance(top_posts, list):
-            continue
-
-        post_lines: list[str] = []
-        for post in top_posts:
-            if not isinstance(post, dict):
-                continue
-            excerpt = post.get("caption_excerpt", "")
-            why = post.get("why_it_worked", "")
-            post_lines.append(f"- Post: {excerpt}\n  Why: {why}")
-
-        if not post_lines:
-            continue
-
-        blocks.append(f"### @{handle}\n" + "\n".join(post_lines))
+        block = _competitor_block(handle)
+        if block:
+            blocks.append(block)
 
     if not blocks:
         return ""
