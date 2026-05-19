@@ -3,6 +3,7 @@ from ai_social_content_generator.telegram_bot.users import is_onboarded, load_us
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import analyze_from_vault
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import compose_carousel_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
+from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -228,7 +229,7 @@ async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT
         return
 
     if query.data == "brainstorm_new":
-        await query.edit_message_text("Brainstorm coming in Phase 3...")
+        await brainstorm_topics_from_vault(update, context)
 
     elif query.data == "brainstorm_headlines_all":
         user_data = load_user(user_id)
