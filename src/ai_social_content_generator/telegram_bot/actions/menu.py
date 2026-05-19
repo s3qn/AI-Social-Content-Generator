@@ -3,7 +3,7 @@ from ai_social_content_generator.telegram_bot.users import is_onboarded, load_us
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import analyze_from_vault
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import compose_carousel_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
-from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault
+from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault, brainstorm_own_process
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -198,6 +198,7 @@ async def brainstorm_submenu_show(update: Update, context: ContextTypes.DEFAULT_
         [InlineKeyboardButton("➕ Brainstorm new ideas", callback_data="brainstorm_new")],
         [InlineKeyboardButton("✨ Generate headlines for all", callback_data="brainstorm_headlines_all")],
         [InlineKeyboardButton("🗑️ Remove topic", callback_data="brainstorm_remove")],
+        [InlineKeyboardButton("⚠️ Remove all", callback_data="brainstorm_remove_all")],
         [InlineKeyboardButton("← Back", callback_data="brainstorm_back")],
     ]
 
@@ -229,7 +230,18 @@ async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT
         return
 
     if query.data == "brainstorm_new":
+        await brainstorm_source_show(update, context)
+
+    elif query.data == "brainstorm_source_auto":
         await brainstorm_topics_from_vault(update, context)
+
+    elif query.data == "brainstorm_own_polish":
+        idea = context.user_data.get("pending_own_idea", "")
+        await brainstorm_own_process(update, context, idea, mode="polish")
+
+    elif query.data == "brainstorm_own_expand":
+        idea = context.user_data.get("pending_own_idea", "")
+        await brainstorm_own_process(update, context, idea, mode="expand")
 
     elif query.data == "brainstorm_headlines_all":
         user_data = load_user(user_id)
@@ -245,6 +257,19 @@ async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT
 
     elif query.data == "brainstorm_remove":
         await brainstorm_remove_buttons(update, context)
+
+    elif query.data == "brainstorm_remove_all":
+        await brainstorm_remove_all_confirm(update, context)
+
+    elif query.data == "brainstorm_remove_all_yes":
+        user_data = load_user(user_id)
+        if user_data is not None:
+            user_data["topics"] = []
+            save_user(user_id, user_data)
+        await brainstorm_submenu_show(update, context)
+
+    elif query.data == "brainstorm_remove_all_no":
+        await brainstorm_submenu_show(update, context)
 
     elif query.data == "brainstorm_back":
         await ideas_submenu_show(update, context)
@@ -275,5 +300,48 @@ async def brainstorm_remove_buttons(update: Update, context: ContextTypes.DEFAUL
 
     await query.edit_message_text(
         "Tap a number to remove:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def brainstorm_source_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    keyboard = [
+        [InlineKeyboardButton("🤖 Auto-generate from profile", callback_data="brainstorm_source_auto")],
+        [InlineKeyboardButton("✍️ Write my own idea", callback_data="brainstorm_source_own")],
+        [InlineKeyboardButton("← Back", callback_data="brainstorm_back")],
+    ]
+
+    await query.edit_message_text(
+        "How do you want to brainstorm?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def brainstorm_remove_all_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    user_id = update.effective_user.id
+    user_data = load_user(user_id)
+    topics = user_data.get("topics", []) if user_data else []
+    count = len(topics)
+
+    if count == 0:
+        keyboard = [[InlineKeyboardButton("← Back", callback_data="brainstorm_back")]]
+        await query.edit_message_text(
+            "No topics to delete.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("⚠️ Yes, delete all", callback_data="brainstorm_remove_all_yes")],
+        [InlineKeyboardButton("← Cancel", callback_data="brainstorm_remove_all_no")],
+    ]
+    await query.edit_message_text(
+        f"Delete all {count} topics? This cannot be undone.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
