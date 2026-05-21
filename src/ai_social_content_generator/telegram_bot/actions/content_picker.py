@@ -1,0 +1,305 @@
+import json
+import logging
+import re
+from pathlib import Path
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
+
+from ai_social_content_generator.telegram_bot.auth import require_auth
+from ai_social_content_generator.telegram_bot.users import load_user
+from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+    build_competitor_section,
+)
+
+logger = logging.getLogger(__name__)
+
+SKILL_PATH = Path("src/ai_social_content_generator/content_picker/SKILL.md")
+
+HEADLINES_PER_TOPIC = 8
+MIN_PARSED_HOOKS = 5
+TOPIC_DISPLAY_MAX = 50
+HEADLINE_DISPLAY_MAX = 80
+
+
+def _truncate(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "..."
+
+
+async def content_picker_entry(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    content_type: str,
+) -> None:
+    query = update.callback_query
+    user_id = update.effective_user.id
+
+    user_data = load_user(user_id)
+    topics = user_data.get("topics", []) if user_data else []
+
+    if not topics:
+        keyboard = [[InlineKeyboardButton("← Back", callback_data="ideas_back")]]
+        await query.edit_message_text(
+            "No topics yet. Brainstorm ideas first.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    context.user_data["picker_content_type"] = content_type
+    await topic_picker_show(update, context, content_type)
+
+
+async def topic_picker_show(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    content_type: str,
+) -> None:
+    query = update.callback_query
+    user_id = update.effective_user.id
+
+    user_data = load_user(user_id)
+    topics = user_data.get("topics", []) if user_data else []
+
+    if not topics:
+        keyboard = [[InlineKeyboardButton("← Back", callback_data="ideas_back")]]
+        await query.edit_message_text(
+            "No topics yet. Brainstorm ideas first.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    lines: list[str] = []
+    for i, topic in enumerate(topics, start=1):
+        core = topic.get("core_idea", "")
+        lines.append(f"{i}. {_truncate(core, TOPIC_DISPLAY_MAX)}")
+    text = f"📌 Pick a topic for your {content_type}:\n\n" + "\n".join(lines)
+
+    buttons = [
+        InlineKeyboardButton(
+            str(i + 1), callback_data=f"topic_pick_{content_type}_{i}"
+        )
+        for i in range(len(topics))
+    ]
+    keyboard = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
+    keyboard.append([InlineKeyboardButton("← Back", callback_data="ideas_back")])
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def topic_picker_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+
+    payload = query.data.removeprefix("topic_pick_")
+    parts = payload.split("_", 1)
+    if len(parts) != 2:
+        logger.error("topic_picker_route: bad callback_data=%r", query.data)
+        return
+    content_type, index_str = parts
+    try:
+        topic_index = int(index_str)
+    except ValueError:
+        logger.error("topic_picker_route: bad index in callback_data=%r", query.data)
+        return
+
+    user_data = load_user(user_id)
+    topics = user_data.get("topics", []) if user_data else []
+
+    if topic_index < 0 or topic_index >= len(topics):
+        keyboard = [[InlineKeyboardButton("← Back", callback_data="brainstorm_back")]]
+        await query.edit_message_text(
+            "Topic not found, please try again.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
+    await headline_picker_generate(update, context, content_type, topic_index)
+
+
+async def headline_picker_generate(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    content_type: str,
+    topic_index: int,
+) -> None:
+    query = update.callback_query
+    user_id = update.effective_user.id
+
+    user_data = load_user(user_id)
+    if user_data is None or "handle" not in user_data or "niche" not in user_data:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="No account info. Please complete onboarding first.",
+        )
+        return
+
+    topics = user_data.get("topics", [])
+    if topic_index < 0 or topic_index >= len(topics):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Topic not found, please try again.",
+        )
+        return
+
+    topic = topics[topic_index]
+    core_idea = topic.get("core_idea", "")
+    topic_id = topic.get("id", "")
+
+    handle = user_data["handle"]
+    analysis_path = Path(f"cache/{handle}-analysis.json")
+    if not analysis_path.exists():
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Please run Analyze first before generating headlines.",
+        )
+        return
+
+    await query.edit_message_text(
+        f"Generating {HEADLINES_PER_TOPIC} headlines, ~30 sec..."
+    )
+
+    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    voice = analysis.get("voice", [])
+    voice_str = ", ".join(voice) if isinstance(voice, list) else str(voice)
+    niche = analysis.get("niche") or user_data.get("niche", "")
+
+    competitors = user_data.get("competitors", [])
+    competitor_section = build_competitor_section(competitors)
+
+    skill_template = SKILL_PATH.read_text(encoding="utf-8")
+    prompt = skill_template.format(
+        content_type=content_type,
+        topic=core_idea,
+        niche=niche,
+        voice_str=voice_str,
+        competitor_section=competitor_section,
+    )
+
+    claude_reply = await message_claude(prompt)
+    raw_output = getattr(claude_reply, "stdout", "") or ""
+    returncode = getattr(claude_reply, "returncode", -1)
+
+    if claude_reply is None or returncode != 0 or not raw_output:
+        logger.error(
+            "Content picker: Claude failed for topic_id=%s content_type=%s reply=%r",
+            topic_id, content_type, claude_reply,
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Headline generation failed, try again.",
+        )
+        return
+
+    parsed = re.findall(r"^\s*\d+\.\s*(.+?)\s*$", raw_output, re.MULTILINE)
+    headlines = [h.strip() for h in parsed if h.strip()]
+
+    if len(headlines) < MIN_PARSED_HOOKS:
+        logger.error(
+            "Content picker: parsed too few hooks (%d) for topic_id=%s raw=%r",
+            len(headlines), topic_id, raw_output,
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Headline generation failed, try again.",
+        )
+        return
+
+    context.user_data["pending_headlines"] = headlines
+    context.user_data["pending_topic_id"] = topic_id
+    context.user_data["pending_content_type"] = content_type
+
+    await headline_picker_show(update, context)
+
+
+async def headline_picker_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+
+    headlines: list[str] = context.user_data.get("pending_headlines", [])
+    content_type: str = context.user_data.get("pending_content_type", "carousel")
+
+    if not headlines:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="No pending headlines. Please pick a topic again.",
+        )
+        return
+
+    lines = [
+        f"{i + 1}. {_truncate(h, HEADLINE_DISPLAY_MAX)}"
+        for i, h in enumerate(headlines)
+    ]
+    text = f"💡 Pick a hook for your {content_type}:\n\n" + "\n".join(lines)
+
+    buttons = [
+        InlineKeyboardButton(
+            str(i + 1), callback_data=f"headline_pick_{content_type}_{i}"
+        )
+        for i in range(len(headlines))
+    ]
+    keyboard = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
+    keyboard.append(
+        [InlineKeyboardButton("← Back to topic picker", callback_data="topic_picker_back")]
+    )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def headline_picker_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    payload = query.data.removeprefix("headline_pick_")
+    parts = payload.split("_", 1)
+    if len(parts) != 2:
+        logger.error("headline_picker_route: bad callback_data=%r", query.data)
+        return
+    content_type, index_str = parts
+    try:
+        index = int(index_str)
+    except ValueError:
+        logger.error("headline_picker_route: bad index in callback_data=%r", query.data)
+        return
+
+    headlines: list[str] = context.user_data.get("pending_headlines", [])
+    if index < 0 or index >= len(headlines):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Headline not found, please pick again.",
+        )
+        return
+
+    chosen_headline = headlines[index]
+    next_phase = "B" if content_type == "carousel" else "C"
+    await query.edit_message_text(
+        f"You picked: {chosen_headline}\n\n"
+        f"[{content_type.upper()} generation coming in Phase {next_phase}.]"
+    )
+
+
+@require_auth
+async def topic_picker_back_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    content_type = context.user_data.get("pending_content_type", "carousel")
+    await topic_picker_show(update, context, content_type)

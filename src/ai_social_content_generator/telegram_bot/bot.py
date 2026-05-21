@@ -6,6 +6,11 @@ from dotenv import load_dotenv, find_dotenv
 from ai_social_content_generator.telegram_bot.actions import start_bot, receive_handle, confirm_handle, receive_niche, confirm_niche, cancel, profile_analyzer, message_bot, WAITING_FOR_HANDLE, CONFIRMING_HANDLE, WAITING_FOR_NICHE, CONFIRMING_NICHE
 from ai_social_content_generator.telegram_bot.actions import own_idea_start, own_idea_receive, WAITING_FOR_OWN_IDEA
 from ai_social_content_generator.telegram_bot.actions.menu import main_menu_route, ideas_submenu_route, competitors_submenu_route, brainstorm_submenu_route
+from ai_social_content_generator.telegram_bot.actions.content_picker import (
+    topic_picker_route,
+    headline_picker_route,
+    topic_picker_back_route,
+)
 from ai_social_content_generator.telegram_bot.actions.competitors import (
     competitor_add_start,
     competitor_receive_handle,
@@ -83,6 +88,15 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(brainstorm_submenu_route, pattern="^brainstorm_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(topic_picker_back_route, pattern="^topic_picker_back$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(topic_picker_route, pattern="^topic_pick_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(headline_picker_route, pattern="^headline_pick_")
     )
     application.run_polling()
 

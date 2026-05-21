@@ -1,10 +1,9 @@
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import is_onboarded, load_user, save_user
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import analyze_from_vault
-from ai_social_content_generator.telegram_bot.actions.compose_carousel import compose_carousel_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
 from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault, brainstorm_own_process
-from ai_social_content_generator.telegram_bot.actions.generate_headlines import generate_headlines_for_all
+from ai_social_content_generator.telegram_bot.actions.content_picker import content_picker_entry
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -82,10 +81,9 @@ async def ideas_submenu_route(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     if query.data == "ideas_carousel":
-        await query.edit_message_text("Generating, ~30 sec...")
-        await compose_carousel_from_vault(update, context)
+        await content_picker_entry(update, context, "carousel")
     elif query.data == "ideas_reel":
-        await query.edit_message_text("🎥 Reel ideas coming soon!")
+        await content_picker_entry(update, context, "reel")
     elif query.data == "ideas_brainstorm":
         await brainstorm_submenu_show(update, context)
     elif query.data == "ideas_back":
@@ -197,7 +195,6 @@ async def brainstorm_submenu_show(update: Update, context: ContextTypes.DEFAULT_
 
     keyboard = [
         [InlineKeyboardButton("➕ Brainstorm new ideas", callback_data="brainstorm_new")],
-        [InlineKeyboardButton("✨ Generate headlines for all", callback_data="brainstorm_headlines_all")],
         [InlineKeyboardButton("🗑️ Remove topic", callback_data="brainstorm_remove")],
         [InlineKeyboardButton("⚠️ Remove all", callback_data="brainstorm_remove_all")],
         [InlineKeyboardButton("← Back", callback_data="brainstorm_back")],
@@ -243,18 +240,6 @@ async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT
     elif query.data == "brainstorm_own_expand":
         idea = context.user_data.get("pending_own_idea", "")
         await brainstorm_own_process(update, context, idea, mode="expand")
-
-    elif query.data == "brainstorm_headlines_all":
-        user_data = load_user(user_id)
-        topics = user_data.get("topics", []) if user_data else []
-        if not topics:
-            keyboard = [[InlineKeyboardButton("← Back", callback_data="brainstorm_back")]]
-            await query.edit_message_text(
-                "No topics yet. Tap 'Brainstorm new ideas' first.",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-            )
-            return
-        await generate_headlines_for_all(update, context)
 
     elif query.data == "brainstorm_remove":
         await brainstorm_remove_buttons(update, context)
