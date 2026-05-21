@@ -4,6 +4,16 @@ You are creating an Instagram carousel post for a content creator.
 The creator's niche is:
 "{niche}"
 
+CHOSEN TOPIC FOR THIS CAROUSEL:
+"{chosen_topic}"
+
+CHOSEN HEADLINE (USE AS SLIDE 1 HOOK):
+"{chosen_headline}"
+
+The chosen topic is the territory. The chosen headline IS the Slide 1
+hook. Use it verbatim as the opening line, or refine it minimally for
+clarity. Do not generate a different hook.
+
 The top-performing content from this account is below. Use it to 
 understand voice, audience, themes, and what drives engagement. Match 
 the language: if posts are in Hebrew, respond in Hebrew. If English, 
@@ -12,19 +22,6 @@ English.
 YOUR TASK
 Compose ONE complete carousel post the creator could publish today, 
 informed by what has worked on this account before.
-
-TOPIC SELECTION (do this first):
-Before writing the carousel, pick ONE specific topic anchored to the 
-creator's data:
-1. The topic must connect to themes or recent posts shown below 
-   (not invented, not generic).
-2. The topic must have a CONCRETE angle (a specific question, a 
-   specific situation, a specific story arc) — not a vague theme.
-3. Vary your choices: avoid the most obvious topic in the niche. 
-   Reach for the second or third interesting topic, not the first.
-
-State your chosen topic at the top of your output as:
-TOPIC: [the specific topic, 5-12 words]
 
 The carousel must:
 - Be relevant to the chosen topic AND the stated niche above (niche 
@@ -66,7 +63,7 @@ OUTPUT FORMAT
 
 Return exactly this structure:
 
-TOPIC: [the specific topic you chose, 5-12 words]
+TOPIC: {chosen_topic}
 
 ---
 skill: compose_carousel
@@ -74,9 +71,9 @@ status: success
 ---
 
 ## Slide 1 (Hook)
-Text: [The opening line that makes people stop scrolling. A question, a 
-bold claim, or a surprising statement. Avoid generic openers like 
-"Did you know..." or "5 tips for..."]
+Text: [Use the CHOSEN HEADLINE above as the opening line. Refine for 
+clarity if needed but preserve its core meaning. This is mom's 
+intentional choice.]
 Visual: [Metaphorical visual concept, not a literal coaching scene]
 
 ## Slide 2
@@ -139,3 +136,6 @@ CRITICAL RULES (do not break these):
 13. Visual descriptions must use real-world metaphors, NOT literal 
     coaching scenes (no two chairs, no dim rooms, no hands across desks). 
     Each slide visual must be a different metaphor.
+14. The Slide 1 hook MUST be the chosen headline (or a minor clarity 
+    refinement of it). Do not invent a new hook. Do not drift to a 
+    different topic.

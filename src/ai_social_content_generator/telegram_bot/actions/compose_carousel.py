@@ -7,7 +7,6 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import load_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
@@ -17,9 +16,12 @@ logger = logging.getLogger(__name__)
 SKILL_PATH = Path("src/ai_social_content_generator/compose_carousel/SKILL.md")
 
 
-@require_auth
-async def compose_carousel_from_vault(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Generates a carousel idea from the user's analysis. Called from menu button."""
+async def compose_carousel_from_picked(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    topic_core_idea: str,
+    chosen_headline: str,
+) -> None:
     user_id = update.effective_user.id
     user_data = load_user(user_id)
 
@@ -54,6 +56,8 @@ async def compose_carousel_from_vault(update: Update, context: ContextTypes.DEFA
     formatted = _format_analysis_for_prompt(analysis)
     formatted["engagement_digest"] = engagement_digest
     formatted["competitor_section"] = competitor_section
+    formatted["chosen_topic"] = topic_core_idea
+    formatted["chosen_headline"] = chosen_headline
     prompt = skill_template.format(**formatted)
 
     claude_reply = await message_claude(prompt)

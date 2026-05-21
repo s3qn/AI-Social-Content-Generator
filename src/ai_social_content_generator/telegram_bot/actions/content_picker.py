@@ -7,10 +7,16 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.users import load_user
+from ai_social_content_generator.telegram_bot.users import (
+    add_headlines_to_topic,
+    load_user,
+    mark_headline_used,
+    save_user,
+)
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     build_competitor_section,
+    compose_carousel_from_picked,
 )
 
 logger = logging.getLogger(__name__)
@@ -265,6 +271,7 @@ async def headline_picker_route(
 ) -> None:
     query = update.callback_query
     await query.answer()
+    user_id = update.effective_user.id
 
     payload = query.data.removeprefix("headline_pick_")
     parts = payload.split("_", 1)
@@ -287,11 +294,51 @@ async def headline_picker_route(
         return
 
     chosen_headline = headlines[index]
-    next_phase = "B" if content_type == "carousel" else "C"
-    await query.edit_message_text(
-        f"You picked: {chosen_headline}\n\n"
-        f"[{content_type.upper()} generation coming in Phase {next_phase}.]"
-    )
+
+    if content_type == "carousel":
+        topic_id = context.user_data.get("pending_topic_id")
+        user_data = load_user(user_id)
+        topic = next(
+            (
+                t for t in (user_data.get("topics", []) if user_data else [])
+                if t.get("id") == topic_id
+            ),
+            None,
+        )
+        if topic is None:
+            await query.edit_message_text("Topic no longer exists. Brainstorm again.")
+            return
+
+        topic_core_idea = topic.get("core_idea", "")
+
+        add_headlines_to_topic(user_data, topic_id, [chosen_headline])
+        mark_headline_used(user_data, topic_id, chosen_headline)
+        save_user(user_id, user_data)
+
+        await query.edit_message_text(
+            f"📜 Generating carousel using:\n\n"
+            f"Topic: {topic_core_idea}\n"
+            f"Hook: {chosen_headline}\n\n"
+            f"~30-60 sec..."
+        )
+
+        await compose_carousel_from_picked(
+            update, context, topic_core_idea, chosen_headline
+        )
+
+        context.user_data.pop("pending_headlines", None)
+        context.user_data.pop("pending_topic_id", None)
+        context.user_data.pop("pending_content_type", None)
+        return
+
+    if content_type == "reel":
+        await query.edit_message_text(
+            f"You picked: {chosen_headline}\n\n"
+            f"[REEL generation coming in Phase C.]"
+        )
+        return
+
+    logger.error("headline_picker_route: unknown content_type=%r", content_type)
 
 
 @require_auth
