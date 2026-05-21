@@ -3,7 +3,7 @@ from ai_social_content_generator.telegram_bot.users import is_onboarded, load_us
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import analyze_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
 from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault, brainstorm_own_process
-from ai_social_content_generator.telegram_bot.actions.content_picker import content_picker_entry
+from ai_social_content_generator.telegram_bot.actions.content_picker import content_picker_entry, reel_format_picker_show
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -83,7 +83,7 @@ async def ideas_submenu_route(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query.data == "ideas_carousel":
         await content_picker_entry(update, context, "carousel")
     elif query.data == "ideas_reel":
-        await content_picker_entry(update, context, "reel")
+        await reel_format_picker_show(update, context)
     elif query.data == "ideas_brainstorm":
         await brainstorm_submenu_show(update, context)
     elif query.data == "ideas_back":

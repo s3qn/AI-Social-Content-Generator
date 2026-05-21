@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 import logging
-import time
+import uuid
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,8 @@ def save_user(user_id: int, data: dict) -> None:
 
 
 def add_topic(user_data: dict, core_idea: str) -> dict:
-    timestamp_ms = int(time.time() * 1000)
     topic = {
-        "id": f"topic_{timestamp_ms}",
+        "id": f"topic_{uuid.uuid4().hex[:12]}",
         "core_idea": core_idea,
         "headlines": [],
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -44,6 +43,20 @@ def add_topic(user_data: dict, core_idea: str) -> dict:
     user_data["topics"].append(topic)
     _prune_topics(user_data)
     return user_data
+
+
+def heal_duplicate_topic_ids(user_data: dict) -> bool:
+    """Give a fresh uuid to any topic whose id duplicates an earlier one.
+    Returns True if anything was changed (caller should save_user)."""
+    seen: set[str] = set()
+    changed = False
+    for topic in user_data.get("topics", []):
+        tid = topic.get("id")
+        if not tid or tid in seen:
+            topic["id"] = f"topic_{uuid.uuid4().hex[:12]}"
+            changed = True
+        seen.add(topic["id"])
+    return changed
 
 
 def add_headlines_to_topic(user_data: dict, topic_id: str, headlines: list[str]) -> dict:

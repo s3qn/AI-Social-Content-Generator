@@ -86,7 +86,7 @@ async def compose_carousel_from_picked(
         text=carousel_part,
     )
 
-    if attribution_part is not None and not _is_empty_attribution(attribution_part):
+    if attribution_part is not None and not is_empty_attribution(attribution_part):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=attribution_part,
@@ -96,7 +96,7 @@ async def compose_carousel_from_picked(
         logger.info("Sent carousel only — no attribution")
 
 
-def _is_empty_attribution(text: str) -> bool:
+def is_empty_attribution(text: str) -> bool:
     body_lines = [
         line for line in text.splitlines()
         if not line.strip().startswith("## Attribution")

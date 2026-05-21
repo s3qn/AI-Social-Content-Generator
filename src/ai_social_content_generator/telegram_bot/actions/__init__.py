@@ -6,6 +6,7 @@ from .profile_skill_creator import profile_analyzer
 from .normal_message import message_bot
 from .menu import ideas_submenu_show, ideas_submenu_route
 from .compose_carousel import compose_carousel_from_picked
+from .compose_reel import compose_reel_from_picked
 from .brainstorm_topics import (
     brainstorm_topics_from_vault,
     own_idea_start,
@@ -20,6 +21,8 @@ from .content_picker import (
     headline_picker_show,
     headline_picker_route,
     topic_picker_back_route,
+    reel_format_picker_show,
+    reel_format_picker_route,
 )
 
 # States

@@ -10,6 +10,7 @@ from ai_social_content_generator.telegram_bot.actions.content_picker import (
     topic_picker_route,
     headline_picker_route,
     topic_picker_back_route,
+    reel_format_picker_route,
 )
 from ai_social_content_generator.telegram_bot.actions.competitors import (
     competitor_add_start,
@@ -97,6 +98,9 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(headline_picker_route, pattern="^headline_pick_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(reel_format_picker_route, pattern="^reel_format_")
     )
     application.run_polling()
 

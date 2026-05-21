@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import (
     add_headlines_to_topic,
+    heal_duplicate_topic_ids,
     load_user,
     mark_headline_used,
     save_user,
@@ -17,6 +18,9 @@ from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     build_competitor_section,
     compose_carousel_from_picked,
+)
+from ai_social_content_generator.telegram_bot.actions.compose_reel import (
+    compose_reel_from_picked,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,6 +37,57 @@ def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "..."
+
+
+@require_auth
+async def reel_format_picker_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    keyboard = [
+        [InlineKeyboardButton(
+            "📝 Text overlay (low effort, viral format)",
+            callback_data="reel_format_text_overlay",
+        )],
+        [InlineKeyboardButton(
+            "🎤 Talking head (speak to camera)",
+            callback_data="reel_format_talking_head",
+        )],
+        [InlineKeyboardButton("← Back", callback_data="ideas_back")],
+    ]
+
+    text = (
+        "How do you want this reel to look?\n\n"
+        "📝 Text overlay: viewers READ text over a simple b-roll video. "
+        "No speaking needed. Low effort to shoot. "
+        "(Format that went viral on your account.)\n\n"
+        "🎤 Talking head: you speak to the camera. More personal but "
+        "more effort."
+    )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def reel_format_picker_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "reel_format_text_overlay":
+        context.user_data["pending_reel_format"] = "text_overlay"
+        await content_picker_entry(update, context, "reel")
+    elif query.data == "reel_format_talking_head":
+        context.user_data["pending_reel_format"] = "talking_head"
+        await content_picker_entry(update, context, "reel")
 
 
 async def content_picker_entry(
@@ -222,6 +277,7 @@ async def headline_picker_generate(
 
     context.user_data["pending_headlines"] = headlines
     context.user_data["pending_topic_id"] = topic_id
+    context.user_data["pending_topic_index"] = topic_index
     context.user_data["pending_content_type"] = content_type
 
     await headline_picker_show(update, context)
@@ -295,47 +351,55 @@ async def headline_picker_route(
 
     chosen_headline = headlines[index]
 
-    if content_type == "carousel":
-        topic_id = context.user_data.get("pending_topic_id")
+    if content_type in ("carousel", "reel"):
+        topic_index = context.user_data.get("pending_topic_index")
         user_data = load_user(user_id)
-        topic = next(
-            (
-                t for t in (user_data.get("topics", []) if user_data else [])
-                if t.get("id") == topic_id
-            ),
-            None,
-        )
-        if topic is None:
+        topics = user_data.get("topics", []) if user_data else []
+
+        if topic_index is None or not isinstance(topic_index, int) or topic_index < 0 or topic_index >= len(topics):
             await query.edit_message_text("Topic no longer exists. Brainstorm again.")
             return
 
+        heal_duplicate_topic_ids(user_data)
+
+        topic = topics[topic_index]
+        topic_id = topic["id"]
         topic_core_idea = topic.get("core_idea", "")
 
         add_headlines_to_topic(user_data, topic_id, [chosen_headline])
         mark_headline_used(user_data, topic_id, chosen_headline)
         save_user(user_id, user_data)
 
-        await query.edit_message_text(
-            f"📜 Generating carousel using:\n\n"
-            f"Topic: {topic_core_idea}\n"
-            f"Hook: {chosen_headline}\n\n"
-            f"~30-60 sec..."
-        )
-
-        await compose_carousel_from_picked(
-            update, context, topic_core_idea, chosen_headline
-        )
+        if content_type == "carousel":
+            await query.edit_message_text(
+                f"📜 Generating carousel using:\n\n"
+                f"Topic: {topic_core_idea}\n"
+                f"Hook: {chosen_headline}\n\n"
+                f"~30-60 sec..."
+            )
+            await compose_carousel_from_picked(
+                update, context, topic_core_idea, chosen_headline
+            )
+        else:
+            reel_format = context.user_data.get(
+                "pending_reel_format", "talking_head"
+            )
+            await query.edit_message_text(
+                f"🎥 Generating reel using:\n\n"
+                f"Topic: {topic_core_idea}\n"
+                f"Hook: {chosen_headline}\n\n"
+                f"~30-60 sec..."
+            )
+            await compose_reel_from_picked(
+                update, context, topic_core_idea, chosen_headline,
+                reel_format=reel_format,
+            )
 
         context.user_data.pop("pending_headlines", None)
         context.user_data.pop("pending_topic_id", None)
+        context.user_data.pop("pending_topic_index", None)
         context.user_data.pop("pending_content_type", None)
-        return
-
-    if content_type == "reel":
-        await query.edit_message_text(
-            f"You picked: {chosen_headline}\n\n"
-            f"[REEL generation coming in Phase C.]"
-        )
+        context.user_data.pop("pending_reel_format", None)
         return
 
     logger.error("headline_picker_route: unknown content_type=%r", content_type)
