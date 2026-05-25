@@ -117,8 +117,13 @@ CRITICAL RULES (do not break these):
 6. Match the language of the top-performing posts. If they wrote in 
    Hebrew, the entire output is in Hebrew.
 7. Voice should feel like the creator wrote it.
-8. Build on what's worked — don't copy. Pattern-match tone and direction, 
-   then bring a fresh angle.
+8. The engagement_digest shows what worked in ONE corner of the
+   creator's broader expertise. Use it as reference for VOICE and
+   RHYTHM only — not as a template for topic angle, emotional
+   anchor, or subject matter. The chosen topic determines the
+   territory. If the chosen topic is far from the digest examples,
+   that is intentional: the creator has broader expertise than the
+   digest reflects. Match the voice, not the subject.
 9. Competitor data is for STRUCTURE only, not for content. Extract 
    patterns (hook style, slide flow, CTA type, topic framing). Do NOT 
    borrow topics, examples, or specific claims from competitor posts. 

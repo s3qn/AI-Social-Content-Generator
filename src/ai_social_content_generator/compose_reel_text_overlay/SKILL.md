@@ -136,8 +136,13 @@ CRITICAL RULES (do not break these):
    caption).
 10. Voice must feel like the creator wrote it. Read voice descriptors
     above and adopt them.
-11. Build on what's worked. Don't copy. Pattern-match tone from the
-    engagement_digest, then bring this topic's fresh angle.
+11. The engagement_digest shows what worked in ONE corner of the
+    creator's broader expertise. Use it as reference for VOICE and
+    RHYTHM only — not as a template for topic angle, emotional
+    anchor, or subject matter. The chosen topic determines the
+    territory. If the chosen topic is far from the digest examples,
+    that is intentional: the creator has broader expertise than the
+    digest reflects. Match the voice, not the subject.
 12. Competitor data is for STRUCTURE only, not content. Form from
     competitors, substance from the creator's niche and chosen topic.
 13. The Attribution section is MANDATORY whenever competitor data is
