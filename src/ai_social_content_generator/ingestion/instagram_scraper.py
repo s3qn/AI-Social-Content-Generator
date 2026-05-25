@@ -158,7 +158,7 @@ def fetch_viral_reels(apify_api_key: str, keyword: str) -> list[dict]:
     client = ApifyClient(apify_api_key)
     actor_client = client.actor(VIRAL_ACTOR_ID)
     result = actor_client.call(run_input={
-        "search": keyword,
+        "query": keyword,
         "maxPages": VIRAL_PAGES_PER_KEYWORD,
     })
 
