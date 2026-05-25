@@ -1,11 +1,53 @@
 from apify_client import ApifyClient
 from dotenv import load_dotenv, find_dotenv
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import os
 import json
 import argparse
 import re
+
+
+VIRAL_EXCEL_HEADERS = [
+    "Tier",
+    "Post Date",
+    "Username",
+    "Views",
+    "Likes",
+    "Comments",
+    "Shares",
+    "Engagement Score",
+    "Caption",
+    "Post URL",
+]
+
+VIRAL_EXCEL_FIELD_MAP = {
+    "Tier": "tier",
+    "Post Date": "post_date",
+    "Username": "username",
+    "Views": "views",
+    "Likes": "likes",
+    "Comments": "comments",
+    "Shares": "shares",
+    "Engagement Score": "engagement_score",
+    "Caption": "caption",
+    "Post URL": "post_url",
+}
+
+VIRAL_EXCEL_COLUMN_WIDTHS = {
+    "Tier": 10,
+    "Post Date": 12,
+    "Username": 22,
+    "Views": 12,
+    "Likes": 10,
+    "Comments": 12,
+    "Shares": 10,
+    "Engagement Score": 18,
+    "Caption": 60,
+    "Post URL": 50,
+}
 
 
 VIRAL_ACTOR_ID = "patient_discovery/instagram-search-reels"
@@ -283,6 +325,88 @@ def invalidate_viral_cache(keyword: str | None = None) -> int:
         p.unlink()
         count += 1
     return count
+
+
+def _sanitize_sheet_name(keyword: str) -> str:
+    """Excel sheet names: max 31 chars, no /\\?*[]:'. Strip + replace
+    invalid chars with underscore. Hebrew/Unicode OK."""
+    safe = re.sub(r"[/\\?*\[\]:']+", "_", keyword.strip())
+    return safe[:31] if safe else "Sheet"
+
+
+def viral_excel_path(handle: str) -> Path:
+    """Standard location for the viral Excel report. Overwritten each
+    generation. handle is used to namespace multiple users."""
+    return Path(__file__).resolve().parents[3] / "cache" / f"viral_report_{handle}.xlsx"
+
+
+def build_viral_excel(results: list[dict], output_path: Path) -> Path:
+    """Build .xlsx file. One sheet per keyword. Returns the output path.
+
+    Within each sheet, posts are sorted: tier 'ever' first, then by
+    engagement_score descending. Header row is frozen. If results is
+    empty, a single 'No Data' sheet is created so the user gets a file
+    back either way.
+    """
+    wb = Workbook()
+    default_sheet = wb.active
+    if default_sheet is not None:
+        wb.remove(default_sheet)
+
+    if not results:
+        ws = wb.create_sheet("No Data")
+        ws["A1"] = "No viral posts found for any keyword."
+        ws["A2"] = "Try different keywords or check your network."
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        wb.save(output_path)
+        return output_path
+
+    grouped: dict[str, list[dict]] = {}
+    for r in results:
+        kw = r.get("keyword_source", "unknown")
+        grouped.setdefault(kw, []).append(r)
+
+    used_names: set[str] = set()
+
+    for keyword, rows in grouped.items():
+        base_name = _sanitize_sheet_name(keyword)
+        sheet_name = base_name
+        suffix = 2
+        while sheet_name in used_names:
+            sheet_name = f"{base_name[:28]}_{suffix}"
+            suffix += 1
+        used_names.add(sheet_name)
+
+        ws = wb.create_sheet(sheet_name)
+
+        for col_idx, header in enumerate(VIRAL_EXCEL_HEADERS, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        sorted_rows = sorted(
+            rows,
+            key=lambda r: (
+                0 if r.get("tier") == "ever" else 1,
+                -r.get("engagement_score", 0),
+            ),
+        )
+
+        for row_idx, row_data in enumerate(sorted_rows, start=2):
+            for col_idx, header in enumerate(VIRAL_EXCEL_HEADERS, start=1):
+                key = VIRAL_EXCEL_FIELD_MAP[header]
+                value = row_data.get(key, "")
+                if key == "engagement_score" and isinstance(value, (int, float)):
+                    value = f"{value:.4f}"
+                ws.cell(row=row_idx, column=col_idx, value=value)
+
+        for col_idx, header in enumerate(VIRAL_EXCEL_HEADERS, start=1):
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = VIRAL_EXCEL_COLUMN_WIDTHS.get(header, 15)
+
+        ws.freeze_panes = "A2"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(output_path)
+    return output_path
 
 
 def main():

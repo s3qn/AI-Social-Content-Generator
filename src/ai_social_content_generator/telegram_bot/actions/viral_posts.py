@@ -13,14 +13,13 @@ from ai_social_content_generator.telegram_bot.users import (
     save_user,
 )
 from ai_social_content_generator.ingestion.instagram_scraper import (
+    build_viral_excel,
     invalidate_viral_cache,
     scrape_and_process_viral_keywords,
+    viral_excel_path,
 )
 
 logger = logging.getLogger(__name__)
-
-TELEGRAM_CHUNK_MAX = 4000
-CAPTION_PREVIEW_CHARS = 200
 
 
 @require_auth
@@ -234,11 +233,10 @@ async def viral_generate_report(
     user_id = update.effective_user.id
     user_data = load_user(user_id)
     keywords = user_data.get("viral_keywords", []) if user_data else []
+    handle = (user_data.get("handle") if user_data else None) or str(user_id)
 
     if not keywords:
-        await query.edit_message_text(
-            "No keywords yet. Add some first."
-        )
+        await query.edit_message_text("No keywords yet. Add some first.")
         return
 
     kw_texts = [kw["text"] for kw in keywords]
@@ -257,54 +255,40 @@ async def viral_generate_report(
         logger.exception("Viral pipeline failed for keywords=%r", kw_texts)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Viral scrape failed. Try again later.",
+            text="Scraping failed. Try again or check logs.",
         )
         return
 
-    if not results:
+    output_path = viral_excel_path(handle)
+    try:
+        await asyncio.to_thread(build_viral_excel, results, output_path)
+    except Exception:
+        logger.exception("Viral Excel build failed for handle=%s", handle)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="No posts found for any keywords.",
+            text="Failed to build Excel file. Try again.",
         )
         return
 
-    chunks: list[str] = []
-    buf = ""
-    for entry in results:
-        tier_emoji = "🏆" if entry["tier"] == "ever" else "🆕"
-        tier_label = "all-time" if entry["tier"] == "ever" else "last 30d"
-        caption = entry["caption"].strip()
-        caption_preview = caption[:CAPTION_PREVIEW_CHARS]
-        if len(caption) > CAPTION_PREVIEW_CHARS:
-            caption_preview += "..."
-
-        block = (
-            f"{tier_emoji} {entry['keyword_source']} ({tier_label})\n"
-            f"@{entry['username']} · {entry['post_date']}\n"
-            f"👁 {entry['views']:,} · ❤ {entry['likes']} · "
-            f"💬 {entry['comments']} · 🔁 {entry['shares']}\n"
-            f"Score: {entry['engagement_score']:.4f}\n"
-            f"{caption_preview}\n"
-            f"🔗 {entry['post_url']}\n\n"
+    try:
+        with open(output_path, "rb") as f:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=f,
+                filename="viral_report.xlsx",
+                caption=(
+                    f"✅ Viral report\n"
+                    f"📊 {len(results)} posts across {len(kw_texts)} keyword{plural}\n"
+                    f"🏆 Top by all-time + 🆕 last 30d per keyword"
+                ),
+            )
+        logger.info(
+            "Sent viral Excel for handle=%s with %d results",
+            handle, len(results),
         )
-
-        if len(buf) + len(block) > TELEGRAM_CHUNK_MAX and buf:
-            chunks.append(buf)
-            buf = block
-        else:
-            buf += block
-    if buf:
-        chunks.append(buf)
-
-    for chunk in chunks:
+    except Exception:
+        logger.exception("Telegram document send failed for handle=%s", handle)
         await context.bot.send_message(
-            chat_id=update.effective_chat.id, text=chunk
+            chat_id=update.effective_chat.id,
+            text="Excel built but failed to send. Try again.",
         )
-
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=(
-            f"✅ {len(results)} posts across {len(kw_texts)} keywords. "
-            f"Excel export coming in Phase 2."
-        ),
-    )
