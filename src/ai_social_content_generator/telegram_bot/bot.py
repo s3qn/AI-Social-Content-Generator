@@ -17,6 +17,11 @@ from ai_social_content_generator.telegram_bot.actions.competitors import (
     competitor_receive_handle,
     WAITING_FOR_COMPETITOR_HANDLE,
 )
+from ai_social_content_generator.telegram_bot.actions.viral_posts import (
+    viral_submenu_route,
+    viral_remove_route,
+    viral_back_submenu_route,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -76,7 +81,7 @@ if __name__ == '__main__':
 
     analyze_handler = CommandHandler('analyze', profile_analyzer)
     message_handle = MessageHandler(filters.TEXT & ~filters.COMMAND, message_bot)
-    menu_analyze = CallbackQueryHandler(main_menu_route, pattern="^menu_")
+    menu_analyze = CallbackQueryHandler(main_menu_route, pattern=r"^(menu_|viral_menu$)")
 
     application.add_handler(message_handle)
     application.add_handler(analyze_handler)
@@ -101,6 +106,18 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(reel_format_picker_route, pattern="^reel_format_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            viral_submenu_route,
+            pattern=r"^viral_(add|remove|generate|refresh|back)$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_remove_route, pattern=r"^viral_remove_pick_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_back_submenu_route, pattern=r"^viral_back_submenu$")
     )
     application.run_polling()
 

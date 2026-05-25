@@ -13,12 +13,19 @@ from telegram.ext import ContextTypes
 @require_auth
 async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
+
     if not is_onboarded(user_id):
         await update.message.reply_text(
             "Please tap /start to set up your account first."
         )
         return
-    
+
+    if context.user_data.get("awaiting_viral_keyword"):
+        from ai_social_content_generator.telegram_bot.actions.viral_posts import (
+            viral_receive_keyword,
+        )
+        await viral_receive_keyword(update, context)
+        return
+
     await menu_popup(update, context)
 

@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 USERS_DIR = Path('users')
 MAX_TOPICS = 30
+MAX_VIRAL_KEYWORDS = 15
 
 def user_path(user_id: int) -> Path:
     return Path(USERS_DIR, f'{user_id}.json')
@@ -23,6 +24,7 @@ def load_user(user_id: int) -> None | dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     data.setdefault("competitors", [])
     data.setdefault("topics", [])
+    data.setdefault("viral_keywords", [])
     return data
 
 def save_user(user_id: int, data: dict) -> None:
@@ -43,6 +45,37 @@ def add_topic(user_data: dict, core_idea: str) -> dict:
     user_data["topics"].append(topic)
     _prune_topics(user_data)
     return user_data
+
+
+def add_viral_keyword(user_data: dict, keyword: str) -> dict | None:
+    """Add a viral search keyword. Returns the new dict, or None on
+    duplicate, empty input, or cap reached."""
+    keyword = keyword.strip()
+    if not keyword:
+        return None
+    keywords = user_data.setdefault("viral_keywords", [])
+    for existing in keywords:
+        if existing["text"].lower() == keyword.lower():
+            return None
+    if len(keywords) >= MAX_VIRAL_KEYWORDS:
+        return None
+    new_kw = {
+        "id": f"kw_{uuid.uuid4().hex[:12]}",
+        "text": keyword,
+        "added_at": datetime.now(timezone.utc).isoformat(),
+    }
+    keywords.append(new_kw)
+    return new_kw
+
+
+def remove_viral_keyword(user_data: dict, keyword_id: str) -> bool:
+    """Remove by id. Returns True if removed."""
+    keywords = user_data.get("viral_keywords", [])
+    for i, kw in enumerate(keywords):
+        if kw.get("id") == keyword_id:
+            keywords.pop(i)
+            return True
+    return False
 
 
 def heal_duplicate_topic_ids(user_data: dict) -> bool:

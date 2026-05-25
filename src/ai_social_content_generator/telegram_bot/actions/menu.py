@@ -16,6 +16,7 @@ def _main_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📊 Analyze my profile", callback_data="menu_analyze")],
         [InlineKeyboardButton("💡 Get post ideas", callback_data="menu_ideas")],
         [InlineKeyboardButton("👥 Competitors", callback_data="menu_competitors")],
+        [InlineKeyboardButton("🔥 Viral posts", callback_data="viral_menu")],
         [
             InlineKeyboardButton("🔄 Refresh", callback_data="menu_refresh"),
             InlineKeyboardButton("⚙️ Edit niche", callback_data="menu_edit_niche"),
@@ -56,6 +57,12 @@ async def main_menu_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "menu_competitors":
         await competitors_submenu_show(update, context)
+
+    if query.data == "viral_menu":
+        from ai_social_content_generator.telegram_bot.actions.viral_posts import (
+            viral_submenu_show,
+        )
+        await viral_submenu_show(update, context)
 
 
 @require_auth
