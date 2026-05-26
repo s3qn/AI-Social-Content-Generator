@@ -1,6 +1,6 @@
 # AI Social Content Generator
 
-A Telegram bot for an Instagram content creator in the Hebrew couples-coaching niche. Generates carousels, reel scripts, and viral content research, all in the creator's voice.
+A Telegram bot for an Instagram content creator. Generates carousels, reel scripts, and viral content research, all in the creator's voice.
 
 Built end-to-end. Real production system with a real user.
 
@@ -16,7 +16,7 @@ The creator opens Telegram. The bot offers:
 - **Viral Posts Research** — scrapes top-performing reels in the niche by keyword, exports to Excel for manual study
 - **Scheduler** — daily posting reminders at 9am or 6pm Jerusalem time
 
-Output language is matched to the creator's content (Hebrew or English). Voice and style are matched via cached analysis of existing posts.
+Output language is matched to the creator's content. Voice and style are matched via cached analysis of existing posts.
 
 ## Why this exists
 
