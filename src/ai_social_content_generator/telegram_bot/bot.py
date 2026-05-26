@@ -22,6 +22,13 @@ from ai_social_content_generator.telegram_bot.actions.viral_posts import (
     viral_remove_route,
     viral_back_submenu_route,
 )
+from ai_social_content_generator.telegram_bot.actions.settings import (
+    settings_submenu_route,
+    scheduler_submenu_route,
+)
+from ai_social_content_generator.telegram_bot.scheduler import (
+    rebuild_all_reminders_on_startup,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -38,7 +45,13 @@ def load_telegram_bot_token():
 if __name__ == '__main__':
 
     token = load_telegram_bot_token()
-    application = ApplicationBuilder().token(token).concurrent_updates(True).build()
+    application = (
+        ApplicationBuilder()
+        .token(token)
+        .concurrent_updates(True)
+        .post_init(rebuild_all_reminders_on_startup)
+        .build()
+    )
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start_bot)],
@@ -81,7 +94,7 @@ if __name__ == '__main__':
 
     analyze_handler = CommandHandler('analyze', profile_analyzer)
     message_handle = MessageHandler(filters.TEXT & ~filters.COMMAND, message_bot)
-    menu_analyze = CallbackQueryHandler(main_menu_route, pattern=r"^(menu_|viral_menu$)")
+    menu_analyze = CallbackQueryHandler(main_menu_route, pattern=r"^(menu_|viral_menu$|main_settings$)")
 
     application.add_handler(message_handle)
     application.add_handler(analyze_handler)
@@ -118,6 +131,18 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(viral_back_submenu_route, pattern=r"^viral_back_submenu$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            settings_submenu_route,
+            pattern=r"^settings_(edit_niche|scheduler|back)$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            scheduler_submenu_route,
+            pattern=r"^scheduler_(set_morning|set_evening|set_off|back)$",
+        )
     )
     application.run_polling()
 

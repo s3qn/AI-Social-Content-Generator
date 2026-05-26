@@ -19,7 +19,7 @@ def _main_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🔥 Viral posts", callback_data="viral_menu")],
         [
             InlineKeyboardButton("🔄 Refresh", callback_data="menu_refresh"),
-            InlineKeyboardButton("⚙️ Edit niche", callback_data="menu_edit_niche"),
+            InlineKeyboardButton("⚙️ Settings", callback_data="main_settings"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -52,9 +52,6 @@ async def main_menu_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "menu_refresh":
         await query.edit_message_text("Refresh data coming soon!")
 
-    if query.data == "menu_edit_niche":
-        await query.edit_message_text("Edit niche coming soon!")
-
     if query.data == "menu_competitors":
         await competitors_submenu_show(update, context)
 
@@ -63,6 +60,12 @@ async def main_menu_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
             viral_submenu_show,
         )
         await viral_submenu_show(update, context)
+
+    if query.data == "main_settings":
+        from ai_social_content_generator.telegram_bot.actions.settings import (
+            settings_submenu_show,
+        )
+        await settings_submenu_show(update, context)
 
 
 @require_auth

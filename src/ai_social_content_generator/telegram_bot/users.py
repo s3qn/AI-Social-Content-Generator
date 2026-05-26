@@ -25,6 +25,7 @@ def load_user(user_id: int) -> None | dict:
     data.setdefault("competitors", [])
     data.setdefault("topics", [])
     data.setdefault("viral_keywords", [])
+    data.setdefault("reminder_schedule", {"enabled": False, "slot": None})
     return data
 
 def save_user(user_id: int, data: dict) -> None:
@@ -126,6 +127,52 @@ def get_unused_headlines(user_data: dict) -> list[dict]:
                     "headline_text": headline["text"],
                 })
     return result
+
+
+def set_reminder_schedule(
+    user_data: dict,
+    enabled: bool,
+    slot: str | None = None,
+) -> dict:
+    """Set the reminder schedule. When enabled, slot must be 'morning'
+    or 'evening'. When disabled, slot is forced to None."""
+    if enabled and slot not in ("morning", "evening"):
+        raise ValueError(
+            f"slot must be 'morning' or 'evening' when enabled=True, got {slot!r}"
+        )
+    user_data["reminder_schedule"] = {
+        "enabled": enabled,
+        "slot": slot if enabled else None,
+    }
+    return user_data["reminder_schedule"]
+
+
+def get_reminder_schedule(user_data: dict) -> dict:
+    """Returns {enabled: bool, slot: str | None}."""
+    return user_data.get(
+        "reminder_schedule",
+        {"enabled": False, "slot": None},
+    )
+
+
+def iter_all_users() -> list[tuple[int, dict]]:
+    """Returns (user_id_int, user_data_dict) tuples for every user file.
+    Used by the scheduler on startup to rebuild jobs."""
+    users_dir = Path(__file__).resolve().parents[3] / "users"
+    results: list[tuple[int, dict]] = []
+    if not users_dir.exists():
+        return results
+    for path in users_dir.glob("*.json"):
+        try:
+            user_id = int(path.stem)
+        except ValueError:
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            results.append((user_id, data))
+        except Exception as e:
+            logger.warning("Failed to load user %s: %s", path, e)
+    return results
 
 
 def _prune_topics(user_data: dict) -> dict:
