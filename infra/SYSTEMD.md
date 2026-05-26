@@ -148,6 +148,11 @@ Common issues:
 - Path to `.venv/bin/python` wrong → check WorkingDirectory + ExecStart in the service file
 - Token invalid → bot will log "Unauthorized" — update .env, restart
 - Port conflicts → unlikely since bot uses polling, not webhooks
+- Bot logs `FileNotFoundError` for `claude` or `claude: command not found` →
+  the `claude` CLI isn't in systemd's PATH. The service file already prepends
+  `/home/sean/.local/bin` to PATH; if claude was installed elsewhere, run
+  `which claude` and update the `Environment="PATH=..."` line accordingly,
+  then `daemon-reload` + `restart`.
 
 ### Bot keeps restarting
 If logs show repeated `Started ...` followed by errors:
