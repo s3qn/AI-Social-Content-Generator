@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 from dotenv import load_dotenv, find_dotenv
@@ -29,6 +30,12 @@ from ai_social_content_generator.telegram_bot.actions.settings import (
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
 )
+from ai_social_content_generator.telegram_bot.actions.admin import (
+    status_command,
+    broadcast_command,
+    restart_command,
+    set_bot_start_time,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -43,6 +50,8 @@ def load_telegram_bot_token():
 
 # Main Guard
 if __name__ == '__main__':
+
+    set_bot_start_time(time.time())
 
     token = load_telegram_bot_token()
     application = (
@@ -98,6 +107,9 @@ if __name__ == '__main__':
 
     application.add_handler(message_handle)
     application.add_handler(analyze_handler)
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
+    application.add_handler(CommandHandler("restart", restart_command))
     application.add_handler(menu_analyze)
     application.add_handler(
         CallbackQueryHandler(ideas_submenu_route, pattern="^ideas_")
