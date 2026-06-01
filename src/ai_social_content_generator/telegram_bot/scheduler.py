@@ -1,12 +1,16 @@
 import logging
+import random
 from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes
 
 from ai_social_content_generator.telegram_bot.users import (
     get_reminder_schedule,
+    get_unused_topics,
     iter_all_users,
+    load_user,
 )
 
 logger = logging.getLogger(__name__)
@@ -16,7 +20,6 @@ SLOT_TIMES = {
     "morning": dtime(9, 0, tzinfo=JERUSALEM_TZ),
     "evening": dtime(18, 0, tzinfo=JERUSALEM_TZ),
 }
-REMINDER_TEXT = "Time to post! Open the bot to create something."
 JOB_NAME_PREFIX = "reminder_"
 
 
@@ -27,15 +30,69 @@ def job_name_for_user(user_id: int) -> str:
 
 
 async def send_reminder_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """JobQueue callback. Sends the daily reminder text to one user.
-    user_id is passed via context.job.data."""
+    """JobQueue callback. Sends a Morning Ideas brief to one user:
+    up to 3 randomly-sampled not-fully-used topics as tappable buttons,
+    or a brainstorm prompt if the vault has no eligible topics.
+    user_id is via context.job.data.
+
+    No subprocess generation here — all generation is on tap (attended)."""
     user_id = context.job.data
+    user_data = load_user(user_id)
+    if user_data is None:
+        logger.warning(
+            "send_reminder_callback: no vault for user_id=%s, skipping", user_id,
+        )
+        return
+
     try:
-        await context.bot.send_message(chat_id=user_id, text=REMINDER_TEXT)
-        logger.info("Sent daily reminder to user_id=%s", user_id)
+        eligible = get_unused_topics(user_data)
     except Exception as e:
         logger.warning(
-            "Failed to send reminder to user_id=%s: %s", user_id, e,
+            "send_reminder_callback: failed to read eligible topics for user_id=%s: %s",
+            user_id, e,
+        )
+        return
+
+    if not eligible:
+        try:
+            text = (
+                "✨ Morning Ideas\n\n"
+                "No ideas queued. Tap below to brainstorm fresh ones."
+            )
+            markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    "💭 Brainstorm new ideas", callback_data="ideas_brainstorm"
+                )]
+            ])
+            await context.bot.send_message(
+                chat_id=user_id, text=text, reply_markup=markup,
+            )
+            logger.info("Sent zero-eligible brief to user_id=%s", user_id)
+        except Exception as e:
+            logger.warning(
+                "Failed to send zero-eligible brief to user_id=%s: %s", user_id, e,
+            )
+        return
+
+    chosen = random.sample(eligible, min(3, len(eligible)))
+
+    # Local import keeps the scheduler import-graph shallow.
+    from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
+        build_topics_message,
+    )
+
+    try:
+        text, markup = build_topics_message(chosen)
+        await context.bot.send_message(
+            chat_id=user_id, text=text, reply_markup=markup,
+        )
+        logger.info(
+            "Sent morning ideas brief to user_id=%s (%d topics)",
+            user_id, len(chosen),
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to send morning brief to user_id=%s: %s", user_id, e,
         )
 
 

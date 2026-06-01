@@ -67,10 +67,11 @@ The user adds up to 15 keywords. On Generate, each keyword scrapes 2 pages of In
 The user picks Morning (09:00) or Evening (18:00) Jerusalem time. The vault stores enabled true and the chosen slot. schedule_reminder_for_user registers a daily APScheduler job. The job sends a plain text reminder when its time hits. On bot restart, rebuild_all_reminders_on_startup walks the users directory and re-registers all jobs.
 
 ### Admin commands
-Three commands are gated to a single user_id.
+Four commands are gated to a single user_id.
 - /restart calls os._exit(0); systemd respawns within 3 seconds
 - /broadcast <message> iterates iter_all_users(), sends to each user, throttled to 20 messages per second
 - /status reports uptime since process start, user count, and PID
+- /testschedule [seconds] fires the daily-brief callback once, N seconds from now (default 60, floor 5), for the calling admin only. Test tool; does not affect the real daily reminder schedule.
 
 ## Real lessons
 

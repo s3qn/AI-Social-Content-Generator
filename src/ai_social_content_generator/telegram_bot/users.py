@@ -109,6 +109,7 @@ def mark_headline_used(user_data: dict, topic_id: str, headline_text: str) -> di
             for headline in topic["headlines"]:
                 if headline["text"] == headline_text:
                     headline["used"] = True
+                    headline["used_at"] = datetime.now(timezone.utc).isoformat()
                     return user_data
             logger.warning("mark_headline_used: headline %r not found in topic %s", headline_text, topic_id)
             return user_data
@@ -175,16 +176,26 @@ def iter_all_users() -> list[tuple[int, dict]]:
     return results
 
 
+def topic_is_used(topic: dict) -> bool:
+    """A topic counts as used iff it has at least one headline AND every
+    headline is marked used. Empty-headlines topics are NOT used (they're
+    eligible for brief surfacing and for eviction in pruning)."""
+    headlines = topic.get("headlines") or []
+    return bool(headlines) and all(h.get("used") for h in headlines)
+
+
+def get_unused_topics(user_data: dict) -> list[dict]:
+    """Topics not fully used — eligible for the morning brief. A topic is
+    eligible if it has no headlines yet OR has at least one unused headline."""
+    return [t for t in user_data.get("topics", []) if not topic_is_used(t)]
+
+
 def _prune_topics(user_data: dict) -> dict:
     topics = user_data["topics"]
     if len(topics) <= MAX_TOPICS:
         return user_data
 
-    def is_used(topic: dict) -> bool:
-        headlines = topic["headlines"]
-        return bool(headlines) and all(h["used"] for h in headlines)
-
-    unused_with_idx = [(i, t) for i, t in enumerate(topics) if not is_used(t)]
+    unused_with_idx = [(i, t) for i, t in enumerate(topics) if not topic_is_used(t)]
     unused_with_idx.sort(key=lambda pair: pair[1]["generated_at"])
 
     to_remove: set[int] = set()

@@ -34,7 +34,12 @@ from ai_social_content_generator.telegram_bot.actions.admin import (
     status_command,
     broadcast_command,
     restart_command,
+    testschedule_command,
     set_bot_start_time,
+)
+from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
+    morning_idea_route,
+    morning_idea_format_route,
 )
 
 logging.basicConfig(
@@ -110,6 +115,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("restart", restart_command))
+    application.add_handler(CommandHandler("testschedule", testschedule_command))
     application.add_handler(menu_analyze)
     application.add_handler(
         CallbackQueryHandler(ideas_submenu_route, pattern="^ideas_")
@@ -154,6 +160,14 @@ if __name__ == '__main__':
         CallbackQueryHandler(
             scheduler_submenu_route,
             pattern=r"^scheduler_(set_morning|set_evening|set_off|back)$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(morning_idea_route, pattern=r"^idea_pick_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            morning_idea_format_route, pattern=r"^(briefpick_|briefreel_)"
         )
     )
     application.run_polling()
