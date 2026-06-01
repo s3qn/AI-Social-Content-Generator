@@ -44,6 +44,7 @@ from .admin import (
     status_command,
     broadcast_command,
     restart_command,
+    testschedule_command,
     set_bot_start_time,
 )
 from .morning_ideas import (

@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_admin
 from ai_social_content_generator.telegram_bot.users import iter_all_users
+from ai_social_content_generator.telegram_bot.scheduler import send_reminder_callback
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,44 @@ async def broadcast_command(
         "Broadcast by admin=%s: sent=%d, failed=%d",
         admin_user_id, sent, failed,
     )
+
+
+@require_admin
+async def testschedule_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """/testschedule [seconds] — fire the morning-brief callback once,
+    N seconds from now (default 60, floor 5), for the calling admin.
+    Test tool; does not touch the real daily reminder job."""
+    user_id = update.effective_user.id
+
+    delay = 60
+    if context.args:
+        try:
+            delay = max(5, int(context.args[0]))
+        except ValueError:
+            await update.message.reply_text("Usage: /testschedule [seconds]")
+            return
+
+    jq = context.application.job_queue
+    if jq is None:
+        await update.message.reply_text("JobQueue unavailable.")
+        return
+
+    # Dedup: cancel any pending test job for this admin so repeated fires
+    # replace rather than stack.
+    for job in jq.get_jobs_by_name(f"testbrief_{user_id}"):
+        job.schedule_removal()
+
+    jq.run_once(
+        send_reminder_callback,
+        when=timedelta(seconds=delay),
+        data=user_id,
+        name=f"testbrief_{user_id}",
+    )
+    await update.message.reply_text(f"Test brief scheduled ~{delay}s from now.")
+    logger.info("Test brief scheduled by admin=%s in %ds", user_id, delay)
 
 
 @require_admin

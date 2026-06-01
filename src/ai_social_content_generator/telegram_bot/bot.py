@@ -34,6 +34,7 @@ from ai_social_content_generator.telegram_bot.actions.admin import (
     status_command,
     broadcast_command,
     restart_command,
+    testschedule_command,
     set_bot_start_time,
 )
 from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
@@ -113,6 +114,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("restart", restart_command))
+    application.add_handler(CommandHandler("testschedule", testschedule_command))
     application.add_handler(menu_analyze)
     application.add_handler(
         CallbackQueryHandler(ideas_submenu_route, pattern="^ideas_")
