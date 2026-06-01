@@ -39,6 +39,7 @@ from ai_social_content_generator.telegram_bot.actions.admin import (
 )
 from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
     morning_idea_route,
+    morning_idea_format_route,
 )
 
 logging.basicConfig(
@@ -163,6 +164,11 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(morning_idea_route, pattern=r"^idea_pick_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            morning_idea_format_route, pattern=r"^(briefpick_|briefreel_)"
+        )
     )
     application.run_polling()
 
