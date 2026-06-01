@@ -109,6 +109,7 @@ def mark_headline_used(user_data: dict, topic_id: str, headline_text: str) -> di
             for headline in topic["headlines"]:
                 if headline["text"] == headline_text:
                     headline["used"] = True
+                    headline["used_at"] = datetime.now(timezone.utc).isoformat()
                     return user_data
             logger.warning("mark_headline_used: headline %r not found in topic %s", headline_text, topic_id)
             return user_data

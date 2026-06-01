@@ -2,11 +2,14 @@ import logging
 from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes
 
 from ai_social_content_generator.telegram_bot.users import (
     get_reminder_schedule,
+    get_unused_headlines,
     iter_all_users,
+    load_user,
 )
 
 logger = logging.getLogger(__name__)
@@ -16,7 +19,6 @@ SLOT_TIMES = {
     "morning": dtime(9, 0, tzinfo=JERUSALEM_TZ),
     "evening": dtime(18, 0, tzinfo=JERUSALEM_TZ),
 }
-REMINDER_TEXT = "Time to post! Open the bot to create something."
 JOB_NAME_PREFIX = "reminder_"
 
 
@@ -27,15 +29,57 @@ def job_name_for_user(user_id: int) -> str:
 
 
 async def send_reminder_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """JobQueue callback. Sends the daily reminder text to one user.
-    user_id is passed via context.job.data."""
+    """JobQueue callback. Sends a Morning Ideas brief to one user:
+    up to 3 unused-headline tappable buttons, or a brainstorm prompt
+    if the vault has no unused headlines. user_id is via context.job.data.
+
+    No subprocess generation here — all generation is on tap (attended)."""
     user_id = context.job.data
+    user_data = load_user(user_id)
+    if user_data is None:
+        logger.warning(
+            "send_reminder_callback: no vault for user_id=%s, skipping", user_id,
+        )
+        return
+
     try:
-        await context.bot.send_message(chat_id=user_id, text=REMINDER_TEXT)
-        logger.info("Sent daily reminder to user_id=%s", user_id)
+        unused = get_unused_headlines(user_data)
     except Exception as e:
         logger.warning(
-            "Failed to send reminder to user_id=%s: %s", user_id, e,
+            "send_reminder_callback: failed to read unused headlines for user_id=%s: %s",
+            user_id, e,
+        )
+        return
+
+    # Local import keeps scheduler import-graph shallow.
+    from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
+        build_ideas_message,
+    )
+
+    try:
+        if unused:
+            text, markup = build_ideas_message(unused)
+            await context.bot.send_message(
+                chat_id=user_id, text=text, reply_markup=markup,
+            )
+            logger.info("Sent morning ideas to user_id=%s", user_id)
+        else:
+            text = (
+                "✨ Morning Ideas\n\n"
+                "No ideas queued. Tap below to brainstorm fresh ones."
+            )
+            markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    "💭 Brainstorm new ideas", callback_data="brainstorm_new"
+                )]
+            ])
+            await context.bot.send_message(
+                chat_id=user_id, text=text, reply_markup=markup,
+            )
+            logger.info("Sent zero-unused brief to user_id=%s", user_id)
+    except Exception as e:
+        logger.warning(
+            "Failed to send morning brief to user_id=%s: %s", user_id, e,
         )
 
 

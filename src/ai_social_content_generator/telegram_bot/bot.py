@@ -36,6 +36,9 @@ from ai_social_content_generator.telegram_bot.actions.admin import (
     restart_command,
     set_bot_start_time,
 )
+from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
+    morning_idea_route,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -155,6 +158,9 @@ if __name__ == '__main__':
             scheduler_submenu_route,
             pattern=r"^scheduler_(set_morning|set_evening|set_off|back)$",
         )
+    )
+    application.add_handler(
+        CallbackQueryHandler(morning_idea_route, pattern=r"^idea_pick_")
     )
     application.run_polling()
 
