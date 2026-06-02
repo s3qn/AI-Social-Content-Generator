@@ -4,16 +4,40 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from telegram import Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Update,
+)
 from telegram.ext import ContextTypes
 
+from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import load_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
+from ai_social_content_generator.render.carousel_render import render_carousel
+from ai_social_content_generator.render.contact_sheet import build_contact_sheet
+from ai_social_content_generator.render.parse_slides import parse_carousel_markdown
 
 logger = logging.getLogger(__name__)
 
 SKILL_PATH = Path("src/ai_social_content_generator/compose_carousel/SKILL.md")
+DEFAULT_BACKGROUND = Path("src/ai_social_content_generator/assets/sample_bg.jpg")
+MEDIA_GROUP_MAX = 10  # Telegram cap
+
+
+def _resolve_background(user_id: int) -> Path:
+    """Return the user's uploaded carousel background, falling back to the
+    committed default. Phase 3 will add the upload flow; for now any path
+    stored in user_data['carousel_background'] wins if it exists on disk."""
+    user_data = load_user(user_id)
+    bg = user_data.get("carousel_background") if user_data else None
+    if bg:
+        p = Path(bg)
+        if p.exists():
+            return p
+    return DEFAULT_BACKGROUND
 
 
 async def compose_carousel_from_picked(
@@ -81,9 +105,22 @@ async def compose_carousel_from_picked(
         carousel_part = raw_output
         attribution_part = None
 
+    gen_button = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎨 Generate images", callback_data="gen_carousel_img")]
+    ])
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=carousel_part,
+        reply_markup=gen_button,
+    )
+
+    # Stash for the later "Generate images" tap. context.user_data persists
+    # in-memory across turns within the same chat. A bot restart clears it,
+    # which is handled gracefully by generate_carousel_images.
+    slides = parse_carousel_markdown(carousel_part)
+    context.user_data["last_carousel"] = {"slides": slides, "handle": handle}
+    logger.info(
+        "Stashed last_carousel for user_id=%s: %d slides parsed", user_id, len(slides),
     )
 
     if attribution_part is not None and not is_empty_attribution(attribution_part):
@@ -94,6 +131,131 @@ async def compose_carousel_from_picked(
         logger.info("Sent carousel + attribution")
     else:
         logger.info("Sent carousel only — no attribution")
+
+
+@require_auth
+async def generate_carousel_images(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle the '🎨 Generate images' tap that follows the carousel text.
+    Renders slides → contact sheet → sends as photo with follow-up
+    individual/publish buttons. Degrades gracefully on render failure —
+    the carousel text above stays intact."""
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    data = context.user_data.get("last_carousel")
+    if not data or not data.get("slides"):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Generate a carousel first, then tap Generate images.",
+        )
+        return
+
+    await context.bot.send_message(
+        chat_id=chat_id, text="🎨 Rendering images, about 15 seconds...",
+    )
+
+    try:
+        bg = _resolve_background(user_id)
+        out_dir = Path("cache") / "render" / str(user_id)
+        paths = await render_carousel(data["slides"], data["handle"], bg, out_dir)
+        sheet = build_contact_sheet(paths, out_dir / "contact_sheet.png")
+    except Exception:
+        logger.exception("Carousel image render failed for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Image rendering failed. Your carousel text above is unaffected.",
+        )
+        return
+
+    context.user_data["last_render"] = {
+        "paths": [str(p) for p in paths],
+        "sheet": str(sheet),
+    }
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "📥 Get individual posts", callback_data="gen_carousel_individual"
+        )],
+        [InlineKeyboardButton(
+            "📤 Upload to Instagram", callback_data="gen_carousel_publish"
+        )],
+    ])
+    try:
+        with open(sheet, "rb") as f:
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=f,
+                caption="Here's your carousel.",
+                reply_markup=kb,
+            )
+        logger.info(
+            "Sent carousel sheet to user_id=%s (%d slides)", user_id, len(paths),
+        )
+    except Exception:
+        logger.exception("Failed to send contact sheet for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Images rendered but failed to send. Try again.",
+        )
+
+
+@require_auth
+async def carousel_individual_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Send the rendered slides as an individual-photos album."""
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+
+    data = context.user_data.get("last_render")
+    if not data or not data.get("paths"):
+        await query.answer("Generate images first.", show_alert=True)
+        return
+    await query.answer()
+
+    paths = [Path(p) for p in data["paths"]][:MEDIA_GROUP_MAX]
+    missing = [p for p in paths if not p.exists()]
+    if missing:
+        logger.warning("carousel_individual_route: missing files: %s", missing)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Rendered images are no longer on disk. Tap 🎨 Generate images again.",
+        )
+        return
+
+    open_files: list = []
+    try:
+        media = []
+        for p in paths:
+            fh = open(p, "rb")
+            open_files.append(fh)
+            media.append(InputMediaPhoto(fh))
+        await context.bot.send_media_group(chat_id=chat_id, media=media)
+        logger.info("Sent individual posts (%d) to chat_id=%s", len(paths), chat_id)
+    except Exception:
+        logger.exception("Failed to send media group to chat_id=%s", chat_id)
+        await context.bot.send_message(
+            chat_id=chat_id, text="Couldn't send the album. Try again.",
+        )
+    finally:
+        for fh in open_files:
+            try:
+                fh.close()
+            except Exception:
+                pass
+
+
+@require_auth
+async def carousel_publish_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Stub for Instagram publishing — Phase 3 territory."""
+    query = update.callback_query
+    await query.answer("Instagram publishing is coming soon!", show_alert=True)
 
 
 def is_empty_attribution(text: str) -> bool:

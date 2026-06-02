@@ -5,7 +5,12 @@ from .start import start_bot
 from .profile_skill_creator import profile_analyzer
 from .normal_message import message_bot
 from .menu import ideas_submenu_show, ideas_submenu_route
-from .compose_carousel import compose_carousel_from_picked
+from .compose_carousel import (
+    compose_carousel_from_picked,
+    generate_carousel_images,
+    carousel_individual_route,
+    carousel_publish_route,
+)
 from .compose_reel import compose_reel_from_picked
 from .brainstorm_topics import (
     brainstorm_topics_from_vault,

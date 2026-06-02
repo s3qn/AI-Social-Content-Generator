@@ -41,6 +41,11 @@ from ai_social_content_generator.telegram_bot.actions.morning_ideas import (
     morning_idea_route,
     morning_idea_format_route,
 )
+from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+    generate_carousel_images,
+    carousel_individual_route,
+    carousel_publish_route,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -168,6 +173,19 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             morning_idea_format_route, pattern=r"^(briefpick_|briefreel_)"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(generate_carousel_images, pattern=r"^gen_carousel_img$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_individual_route, pattern=r"^gen_carousel_individual$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_publish_route, pattern=r"^gen_carousel_publish$"
         )
     )
     application.run_polling()

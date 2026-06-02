@@ -72,7 +72,7 @@ status: success
 
 ## Slide 1 (Hook)
 Text: [Use the CHOSEN HEADLINE above as the opening line. Refine for 
-clarity if needed but preserve its core meaning. This is mom's 
+clarity if needed but preserve its core meaning. This is the creator's 
 intentional choice.]
 Visual: [Metaphorical visual concept, not a literal coaching scene]
 
@@ -144,3 +144,12 @@ CRITICAL RULES (do not break these):
 14. The Slide 1 hook MUST be the chosen headline (or a minor clarity 
     refinement of it). Do not invent a new hook. Do not drift to a 
     different topic.
+15. In each slide's Text, wrap the single most emotionally-loaded BEAT in
+    *asterisks* to mark it for visual highlight when rendered to images.
+    A "beat" is the phrase the slide turns on — usually 1 to 4 words,
+    and often a verb phrase or a contrast, not an isolated noun.
+    Mark the meaning, not a keyword: prefer *לא דיברו*, *כמעט בכתה*,
+    *שונים לגמרי* over a bare *דיברו* or *שונים*.
+    Highlight ONE beat per slide (occasionally two on the hook). Never
+    highlight a whole sentence, and never highlight every line — if
+    everything is highlighted, nothing is. Encouraged on the hook and CTA.
