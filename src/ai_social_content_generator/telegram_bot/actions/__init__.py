@@ -44,6 +44,7 @@ from .settings import (
     settings_submenu_route,
     scheduler_submenu_show,
     scheduler_submenu_route,
+    receive_background_photo,
 )
 from .admin import (
     status_command,

@@ -26,6 +26,7 @@ from ai_social_content_generator.telegram_bot.actions.viral_posts import (
 from ai_social_content_generator.telegram_bot.actions.settings import (
     settings_submenu_route,
     scheduler_submenu_route,
+    receive_background_photo,
 )
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
@@ -158,7 +159,7 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             settings_submenu_route,
-            pattern=r"^settings_(edit_niche|scheduler|back)$",
+            pattern=r"^settings_(edit_niche|scheduler|back|upload_bg)$",
         )
     )
     application.add_handler(
@@ -188,5 +189,10 @@ if __name__ == '__main__':
             carousel_publish_route, pattern=r"^gen_carousel_publish$"
         )
     )
+    # Global photo handler — registered LAST so it doesn't shadow any
+    # ConversationHandler photo state (there isn't one today, but order
+    # is the future-safe default). The handler is flag-gated and ignores
+    # photos unless context.user_data['awaiting_bg_upload'] is True.
+    application.add_handler(MessageHandler(filters.PHOTO, receive_background_photo))
     application.run_polling()
 

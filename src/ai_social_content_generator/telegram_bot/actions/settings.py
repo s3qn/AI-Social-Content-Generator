@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -36,6 +37,7 @@ async def settings_submenu_show(
     keyboard = [
         [InlineKeyboardButton("✏️ Edit niche", callback_data="settings_edit_niche")],
         [InlineKeyboardButton(scheduler_label, callback_data="settings_scheduler")],
+        [InlineKeyboardButton("🖼 Carousel background", callback_data="settings_upload_bg")],
         [InlineKeyboardButton("← Back", callback_data="settings_back")],
     ]
 
@@ -68,6 +70,16 @@ async def settings_submenu_route(
         await settings_submenu_show(update, context)
     elif query.data == "settings_scheduler":
         await scheduler_submenu_show(update, context)
+    elif query.data == "settings_upload_bg":
+        context.user_data["awaiting_bg_upload"] = True
+        await query.edit_message_text(
+            "🖼 Send me an image to use as your carousel background.\n\n"
+            "Rules for a clean result:\n"
+            "1. No text on the image — no title, subtitle, or handle. The bot adds all text.\n"
+            "2. Portrait 4:5 (1080×1350) works best.\n"
+            "3. Leave a calm area (top or middle) for the text to sit.\n\n"
+            "Send the photo now, or tap /cancel."
+        )
     elif query.data == "settings_back":
         from ai_social_content_generator.telegram_bot.actions.menu import (
             _main_menu_keyboard,
@@ -156,3 +168,77 @@ async def scheduler_submenu_route(
         await query.answer("Reminders off ✓", show_alert=False)
 
     await scheduler_submenu_show(update, context)
+
+
+@require_auth
+async def receive_background_photo(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Global filters.PHOTO handler. Flag-gated: returns immediately
+    unless context.user_data['awaiting_bg_upload'] is True. The gate is
+    the FIRST line so stray photos (no other flow expects user photos
+    today) are silently ignored."""
+    if not context.user_data.get("awaiting_bg_upload"):
+        return
+    # Consume the flag immediately so a subsequent stray photo isn't
+    # treated as a new upload.
+    context.user_data["awaiting_bg_upload"] = False
+
+    user_id = update.effective_user.id
+    user_data = load_user(user_id)
+    if not user_data or "handle" not in user_data:
+        await update.message.reply_text(
+            "Please complete onboarding first."
+        )
+        return
+    handle = user_data["handle"]
+
+    if not update.message or not update.message.photo:
+        await update.message.reply_text(
+            "That wasn't a photo. Open Settings → Carousel background and try again."
+        )
+        return
+
+    photo = update.message.photo[-1]  # largest size
+    tg_file = await photo.get_file()
+    dest = Path("cache") / f"{handle}-bg.jpg"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    await tg_file.download_to_drive(custom_path=str(dest))
+
+    user_data["carousel_background"] = str(dest)
+    save_user(user_id, user_data)
+    logger.info(
+        "Saved carousel background for user_id=%s handle=%s -> %s",
+        user_id, handle, dest,
+    )
+
+    await update.message.reply_text(
+        "✅ Background saved. Your next carousel images will use it."
+    )
+
+    # Render one preview slide so the user can spot a baked-in-text
+    # collision before relying on it. Non-fatal — the bg is already saved.
+    try:
+        from ai_social_content_generator.render.carousel_render import (
+            render_carousel,
+        )
+        sample = [
+            {
+                "type": "hook",
+                "n": 1,
+                "text": "דוגמה: *הכותרת שלך* כאן",
+                "sub": None,
+            }
+        ]
+        out_dir = Path("cache") / "render" / str(user_id) / "bg_preview"
+        paths = await render_carousel(sample, handle, dest, out_dir)
+        if paths:
+            with open(paths[0], "rb") as f:
+                await update.message.reply_photo(
+                    photo=f,
+                    caption="Preview — is the text clear and uncluttered?",
+                )
+    except Exception:
+        logger.exception(
+            "Background preview render failed for user_id=%s", user_id,
+        )
