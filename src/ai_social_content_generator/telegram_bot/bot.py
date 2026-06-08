@@ -31,6 +31,12 @@ from ai_social_content_generator.telegram_bot.actions.settings import (
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
 )
+from ai_social_content_generator.instagram.callback_server import (
+    start_callback_server,
+)
+from ai_social_content_generator.instagram.refresh import (
+    schedule_token_refresh_job,
+)
 from ai_social_content_generator.telegram_bot.actions.admin import (
     status_command,
     broadcast_command,
@@ -61,6 +67,18 @@ def load_telegram_bot_token():
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     return telegram_token
 
+
+async def _on_startup(application):
+    """post_init: runs after PTB init, before polling. We piggyback the
+    OAuth callback server, the daily IG token-refresh job, and the
+    existing reminder rebuild here so they all share PTB's event loop."""
+    await rebuild_all_reminders_on_startup(application)
+    schedule_token_refresh_job(application)
+    port = int(os.getenv("OAUTH_CALLBACK_PORT", "8081"))
+    runner = await start_callback_server(port)
+    # Keep a reference so the runner isn't GC'd while the bot is alive.
+    application.bot_data["_oauth_callback_runner"] = runner
+
 # Main Guard
 if __name__ == '__main__':
 
@@ -71,7 +89,7 @@ if __name__ == '__main__':
         ApplicationBuilder()
         .token(token)
         .concurrent_updates(True)
-        .post_init(rebuild_all_reminders_on_startup)
+        .post_init(_on_startup)
         .build()
     )
     
@@ -161,7 +179,7 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             settings_submenu_route,
-            pattern=r"^settings_(edit_niche|scheduler|back|upload_bg)$",
+            pattern=r"^settings_(edit_niche|scheduler|back|upload_bg|connect_ig)$",
         )
     )
     application.add_handler(

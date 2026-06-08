@@ -4,6 +4,9 @@ from pathlib import Path
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from ai_social_content_generator.instagram.oauth import build_authorize_url
+from ai_social_content_generator.instagram.oauth_state import issue_state
+from ai_social_content_generator.instagram.token_store import get_token
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import (
     get_reminder_schedule,
@@ -34,10 +37,15 @@ async def settings_submenu_show(
     else:
         scheduler_label = "⏰ Scheduler (off)"
 
+    ig_label = (
+        "📷 Instagram (connected)" if get_token(user_id) else "📷 Connect Instagram"
+    )
+
     keyboard = [
         [InlineKeyboardButton("✏️ Edit niche", callback_data="settings_edit_niche")],
         [InlineKeyboardButton(scheduler_label, callback_data="settings_scheduler")],
         [InlineKeyboardButton("🖼 Carousel background", callback_data="settings_upload_bg")],
+        [InlineKeyboardButton(ig_label, callback_data="settings_connect_ig")],
         [InlineKeyboardButton("← Back", callback_data="settings_back")],
     ]
 
@@ -80,6 +88,8 @@ async def settings_submenu_route(
             "3. Leave a calm area (top or middle) for the text to sit.\n\n"
             "Send the photo now, or tap /cancel."
         )
+    elif query.data == "settings_connect_ig":
+        await instagram_connect_show(update, context)
     elif query.data == "settings_back":
         from ai_social_content_generator.telegram_bot.actions.menu import (
             _main_menu_keyboard,
@@ -87,6 +97,60 @@ async def settings_submenu_route(
         await query.edit_message_text(
             "What would you like to do?",
             reply_markup=_main_menu_keyboard(),
+        )
+
+
+@require_auth
+async def instagram_connect_show(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Show the Connect-Instagram screen. If already connected, surface
+    that and offer to reconnect. Otherwise mint a fresh single-use state,
+    build the authorize URL, and present it as a tappable URL button."""
+    user_id = update.effective_user.id
+    already = get_token(user_id)
+
+    try:
+        state = issue_state(user_id)
+        authorize_url = build_authorize_url(state)
+    except Exception:
+        logger.exception("Failed to build Instagram authorize URL for user_id=%s", user_id)
+        query = update.callback_query
+        if query is not None:
+            await query.edit_message_text(
+                "Instagram isn't configured on this bot yet. Check back later.",
+            )
+        return
+
+    if already:
+        text = (
+            "📷 Instagram is connected.\n\n"
+            f"Account id: {already.get('ig_account_id', 'unknown')}\n\n"
+            "Tap below to reconnect (e.g. after changing accounts)."
+        )
+        button_label = "🔄 Reconnect Instagram"
+    else:
+        text = (
+            "📷 Connect your Instagram Business account.\n\n"
+            "Tap below, approve the app on Instagram, and you'll be sent back "
+            "to a confirmation page. Return here when done."
+        )
+        button_label = "Open Instagram authorize page"
+
+    keyboard = [
+        [InlineKeyboardButton(button_label, url=authorize_url)],
+        [InlineKeyboardButton("← Back", callback_data="settings_back")],
+    ]
+
+    query = update.callback_query
+    if query is not None:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
 
