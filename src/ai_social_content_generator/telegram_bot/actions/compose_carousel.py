@@ -16,12 +16,19 @@ from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import load_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
+from ai_social_content_generator.instagram.publish import PublishError, publish_carousel
+from ai_social_content_generator.instagram.token_store import clear_token, get_token
 from ai_social_content_generator.render.carousel_render import render_carousel
 from ai_social_content_generator.render.contact_sheet import build_contact_sheet
 from ai_social_content_generator.render.mock_post import render_mock_post
 from ai_social_content_generator.render.parse_slides import (
     parse_carousel_caption_hashtags,
     parse_carousel_markdown,
+)
+from ai_social_content_generator.render.publish_staging import (
+    StagingError,
+    cleanup_staged,
+    stage_for_publish,
 )
 
 logger = logging.getLogger(__name__)
@@ -340,11 +347,107 @@ async def carousel_publish_route(
 async def carousel_confirm_route(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Phase 1 stub for the Confirm tap. Real Instagram publish is Phase 3."""
+    """Real publish. Token-gate → stage slides to the public folder →
+    run the IG carousel publish flow → message the user with a permalink.
+    Cleanup always runs in finally so the public folder doesn't leak
+    files on failure."""
     query = update.callback_query
-    await query.answer(
-        "Publishing isn't wired up yet (Phase 3).", show_alert=True,
-    )
+    await query.answer()
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    tok = get_token(user_id)
+    if not tok:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Connect Instagram first in Settings → 📷 Connect Instagram.",
+        )
+        return
+    ig_account_id = tok.get("ig_account_id")
+    if not ig_account_id:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Instagram account id missing — reconnect from Settings.",
+        )
+        return
+
+    render_data = context.user_data.get("last_render")
+    carousel_data = context.user_data.get("last_carousel")
+    if not render_data or not render_data.get("paths") or not carousel_data:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Generate images first.",
+        )
+        return
+
+    caption = (carousel_data.get("caption") or "").strip()
+    hashtags = (carousel_data.get("hashtags") or "").strip()
+    caption_full = f"{caption}\n\n{hashtags}".strip()
+
+    try:
+        await query.edit_message_caption(caption="📤 Publishing to Instagram…")
+    except Exception:
+        # Original message wasn't a photo we own, or was already edited; not fatal.
+        pass
+
+    slide_paths = [Path(p) for p in render_data["paths"]]
+    staged_paths: list[Path] = []
+    try:
+        staged = stage_for_publish(slide_paths)
+        image_urls = [u for u, _ in staged]
+        staged_paths = [p for _, p in staged]
+    except StagingError:
+        logger.exception("Staging failed for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't prepare images for upload. Try again.",
+        )
+        return
+
+    try:
+        result = await publish_carousel(
+            ig_id=str(ig_account_id),
+            image_urls=image_urls,
+            caption=caption_full,
+            token=tok["token"],
+        )
+        permalink = result.get("permalink")
+        if permalink:
+            text = f"✅ Posted to Instagram!\n{permalink}"
+        else:
+            text = "✅ Posted to Instagram!"
+        await context.bot.send_message(chat_id=chat_id, text=text)
+        logger.info(
+            "IG publish OK user_id=%s media_id=%s",
+            user_id, result.get("media_id"),
+        )
+    except PublishError as e:
+        if e.auth_failed:
+            clear_token(user_id)
+            logger.warning(
+                "IG publish auth failed user_id=%s, cleared token: %s", user_id, e,
+            )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "Instagram rejected the token. Reconnect from Settings → "
+                    "📷 Connect Instagram and try again."
+                ),
+            )
+        else:
+            logger.warning("IG publish failed user_id=%s: %s", user_id, e)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Couldn't publish to Instagram. Your images are safe — try again.",
+            )
+    except Exception:
+        logger.exception("Unexpected IG publish error user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Something went wrong publishing. Try again.",
+        )
+    finally:
+        cleanup_staged(staged_paths)
 
 
 @require_auth
