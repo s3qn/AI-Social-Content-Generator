@@ -10,10 +10,27 @@ class ClaudeResult:
     returncode: int
 
 
+# Claude Code 2.1.154 switched to a "lean" default system prompt and started
+# reserving multi-choice clarification responses for ambiguous input. The
+# bot's SKILL templates piped over stdin look ambiguous under that default,
+# so the CLI replies with "I see you've pasted the prompt — what would you
+# like me to do?" instead of executing. This suffix re-primes the model to
+# treat the piped message as a task to run, restoring pre-2.1.154 behavior.
+_EXECUTION_PRIMING = (
+    "You are being invoked by an automated script via stdin. "
+    "The user message is a complete prompt template to execute as-is, "
+    "not a paste asking for help. Do not ask clarifying questions, do "
+    "not summarize, do not offer alternatives. Produce only the "
+    "structured output described in the prompt."
+)
+
+
 async def message_claude(prompt, timeout=300):
     process = await asyncio.create_subprocess_exec(
         "claude",
         "--print",
+        "--append-system-prompt",
+        _EXECUTION_PRIMING,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
