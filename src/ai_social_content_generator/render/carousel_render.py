@@ -143,17 +143,14 @@ html, body {{
 }}
 .handle {{
   position: absolute;
-  top: 40px; right: 48px;
+  bottom: 70px; left: 0; right: 0;
+  text-align: center;
   font-family: 'CormorantItalic', serif;
   font-style: italic;
   font-size: 36px;
-  color: rgba(255,255,255,0.88);
+  color: rgba(255,255,255,1);
   letter-spacing: 0.5px;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.6);
-  /* Force LTR for the Latin handle — without this the bidi algorithm
-     reorders "@" (a weak neutral character) to the visual end of the
-     run inside an RTL parent, producing "handle@" instead of "@handle".
-     unicode-bidi: isolate keeps the handle in its own bidi context. */
+  text-shadow: 0 2px 10px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.5);
   direction: ltr;
   unicode-bidi: isolate;
 }}
