@@ -46,6 +46,8 @@ from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     generate_carousel_images,
     carousel_individual_route,
     carousel_publish_route,
+    carousel_confirm_route,
+    carousel_cancel_route,
 )
 
 logging.basicConfig(
@@ -187,6 +189,16 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             carousel_publish_route, pattern=r"^gen_carousel_publish$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_confirm_route, pattern=r"^gen_carousel_confirm$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_cancel_route, pattern=r"^gen_carousel_cancel$"
         )
     )
     # Global photo handler — registered LAST so it doesn't shadow any

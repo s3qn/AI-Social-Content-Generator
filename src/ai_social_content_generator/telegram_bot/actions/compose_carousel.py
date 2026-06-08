@@ -18,7 +18,11 @@ from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
 from ai_social_content_generator.render.carousel_render import render_carousel
 from ai_social_content_generator.render.contact_sheet import build_contact_sheet
-from ai_social_content_generator.render.parse_slides import parse_carousel_markdown
+from ai_social_content_generator.render.mock_post import render_mock_post
+from ai_social_content_generator.render.parse_slides import (
+    parse_carousel_caption_hashtags,
+    parse_carousel_markdown,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +122,16 @@ async def compose_carousel_from_picked(
     # in-memory across turns within the same chat. A bot restart clears it,
     # which is handled gracefully by generate_carousel_images.
     slides = parse_carousel_markdown(carousel_part)
-    context.user_data["last_carousel"] = {"slides": slides, "handle": handle}
+    caption, hashtags = parse_carousel_caption_hashtags(raw_output)
+    context.user_data["last_carousel"] = {
+        "slides": slides,
+        "handle": handle,
+        "caption": caption,
+        "hashtags": hashtags,
+    }
     logger.info(
-        "Stashed last_carousel for user_id=%s: %d slides parsed", user_id, len(slides),
+        "Stashed last_carousel for user_id=%s: %d slides, caption=%d chars, hashtags=%d chars",
+        user_id, len(slides), len(caption), len(hashtags),
     )
 
     if attribution_part is not None and not is_empty_attribution(attribution_part):
@@ -253,9 +264,105 @@ async def carousel_individual_route(
 async def carousel_publish_route(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Stub for Instagram publishing — Phase 3 territory."""
+    """Phase 1: render a mock IG post (first slide + handle + full caption +
+    hashtags) and send Confirm/Cancel buttons. No real publishing yet, and
+    no public staging — Phase 3 will own both. Failures degrade gracefully:
+    the rendered carousel above stays intact."""
     query = update.callback_query
-    await query.answer("Instagram publishing is coming soon!", show_alert=True)
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    render_data = context.user_data.get("last_render")
+    carousel_data = context.user_data.get("last_carousel")
+    if not render_data or not render_data.get("paths") or not carousel_data:
+        await query.answer("Generate images first.", show_alert=True)
+        return
+    await query.answer()
+
+    paths = [Path(p) for p in render_data["paths"]]
+    first_slide = paths[0] if paths else None
+    if first_slide is None or not first_slide.exists():
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Rendered images are no longer on disk. Tap 🎨 Generate images again.",
+        )
+        return
+
+    handle = carousel_data.get("handle", "")
+    caption = carousel_data.get("caption", "") or ""
+    hashtags = carousel_data.get("hashtags", "") or ""
+    slide_count = len(paths)
+
+    mock_dir = Path("cache") / "render" / str(user_id)
+    mock_dir.mkdir(parents=True, exist_ok=True)
+    mock_path = mock_dir / "mock_post.png"
+
+    try:
+        await render_mock_post(
+            first_slide_path=first_slide,
+            handle=handle,
+            caption=caption,
+            hashtags=hashtags,
+            slide_count=slide_count,
+            out_path=mock_path,
+        )
+    except Exception:
+        logger.exception("Mock IG post render failed for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't render the post preview. Try again.",
+        )
+        return
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "✅ Looks good, publish", callback_data="gen_carousel_confirm"
+        )],
+        [InlineKeyboardButton("❌ Cancel", callback_data="gen_carousel_cancel")],
+    ])
+    try:
+        with open(mock_path, "rb") as f:
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=f,
+                caption="Preview of how your post will look. Publish?",
+                reply_markup=kb,
+            )
+        logger.info("Sent mock IG post preview to user_id=%s", user_id)
+    except Exception:
+        logger.exception("Failed to send mock IG post for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id, text="Couldn't send the preview. Try again.",
+        )
+
+
+@require_auth
+async def carousel_confirm_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Phase 1 stub for the Confirm tap. Real Instagram publish is Phase 3."""
+    query = update.callback_query
+    await query.answer(
+        "Publishing isn't wired up yet (Phase 3).", show_alert=True,
+    )
+
+
+@require_auth
+async def carousel_cancel_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Phase 1: acknowledge the cancel. There's no staging yet, so nothing
+    public to clean up — Phase 3 will add cleanup when staging lands."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_caption(caption="Cancelled — nothing was posted.")
+    except Exception:
+        # Message might not be editable (e.g., not a photo); fall back to a reply.
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Cancelled — nothing was posted.",
+        )
 
 
 def is_empty_attribution(text: str) -> bool:

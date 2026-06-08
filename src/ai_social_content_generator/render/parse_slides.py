@@ -126,3 +126,45 @@ def parse_carousel_markdown(raw_output: str) -> list[dict]:
         }
         for (n, tag, text) in raw_slides
     ]
+
+
+_SECTION_HEADER = re.compile(r"^\s*##\s+(.+?)\s*$")
+
+
+def _extract_section(raw_output: str, name: str) -> str:
+    """Return the body of '## {name}' (everything until the next '## ' header
+    or end of input). Empty string if the section is missing. Tolerant of
+    extra whitespace and blank lines."""
+    if not raw_output:
+        return ""
+
+    target = name.strip().lower()
+    lines = raw_output.splitlines()
+    body: list[str] = []
+    in_section = False
+
+    for line in lines:
+        header = _SECTION_HEADER.match(line)
+        if header:
+            if in_section:
+                break
+            if header.group(1).strip().lower() == target:
+                in_section = True
+            continue
+        if in_section:
+            body.append(line)
+
+    return "\n".join(body).strip()
+
+
+def parse_carousel_caption_hashtags(raw_output: str) -> tuple[str, str]:
+    """Return (caption, hashtags) from the ## Caption and ## Hashtags sections.
+
+    Either may be '' if absent. Never raises — missing sections, weird
+    spacing, or empty input all yield empty strings. Parses against the
+    full raw output so it works whether caller passes the pre-Attribution
+    slice or the entire model response.
+    """
+    if not raw_output:
+        return "", ""
+    return _extract_section(raw_output, "Caption"), _extract_section(raw_output, "Hashtags")
