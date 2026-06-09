@@ -97,10 +97,11 @@ async def customize_submenu_show(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Sub-menu under Settings: Background + Logo + Back."""
+    """Sub-menu under Settings: Background + Logo + Re-render + Back."""
     keyboard = [
         [InlineKeyboardButton("🖼 Background", callback_data="customize_background")],
         [InlineKeyboardButton("🏷 Logo", callback_data="customize_logo")],
+        [InlineKeyboardButton("🔄 Re-render current carousel", callback_data="customize_rerender")],
         [InlineKeyboardButton("← Back", callback_data="customize_back")],
     ]
     text = "🎨 Customize carousel"
@@ -143,6 +144,14 @@ async def customize_submenu_route(
             "and final slides in place of the default motif.\n\n"
             "Send the file now, or tap /cancel."
         )
+    elif query.data == "customize_rerender":
+        # Render logic lives in compose_carousel; settings just routes here.
+        # Local import avoids an import cycle (compose_carousel pulls nothing
+        # from settings, but keep the boundary tidy).
+        from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+            rerender_current_carousel,
+        )
+        await rerender_current_carousel(update, context)
     elif query.data == "customize_back":
         await settings_submenu_show(update, context)
 

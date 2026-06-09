@@ -187,7 +187,7 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             customize_submenu_route,
-            pattern=r"^customize_(background|logo|back)$",
+            pattern=r"^customize_(background|logo|back|rerender)$",
         )
     )
     application.add_handler(

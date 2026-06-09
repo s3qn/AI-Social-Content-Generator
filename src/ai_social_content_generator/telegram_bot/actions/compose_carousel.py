@@ -237,6 +237,89 @@ async def generate_carousel_images(
 
 
 @require_auth
+async def rerender_current_carousel(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Re-render the session's current carousel with whatever background
+    + logo are set NOW, without going back to Claude. Same parsed slides,
+    fresh visual styling.
+
+    Session-only: reads from context.user_data["last_carousel"], which is
+    in-memory and does not survive a bot restart. The natural use case
+    happens right after generating, so this is fine in practice and we
+    degrade gracefully when the stash is gone."""
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    data = context.user_data.get("last_carousel")
+    if not data or not data.get("slides"):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "No recent carousel to re-render. Generate a carousel first, "
+                "then change the background or logo and come back here."
+            ),
+        )
+        return
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="🔄 Re-rendering with your current background/logo…",
+    )
+
+    try:
+        bg = _resolve_background(user_id)
+        logo = _resolve_logo(user_id)
+        out_dir = Path("cache") / "render" / str(user_id)
+        paths = await render_carousel(
+            data["slides"], data["handle"], bg, out_dir, logo_path=logo,
+        )
+        sheet = build_contact_sheet(paths, out_dir / "contact_sheet.png")
+    except Exception:
+        logger.exception("Re-render failed for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Re-render failed. Your previous images are unaffected.",
+        )
+        return
+
+    # CRITICAL: overwrite last_render so a subsequent Upload to Instagram
+    # publishes the freshly-rendered images, not the originals.
+    context.user_data["last_render"] = {
+        "paths": [str(p) for p in paths],
+        "sheet": str(sheet),
+    }
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "📥 Get individual posts", callback_data="gen_carousel_individual"
+        )],
+        [InlineKeyboardButton(
+            "📤 Upload to Instagram", callback_data="gen_carousel_publish"
+        )],
+    ])
+    try:
+        with open(sheet, "rb") as f:
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=f,
+                caption="Re-rendered with your current styling.",
+                reply_markup=kb,
+            )
+        logger.info(
+            "Re-rendered carousel for user_id=%s (%d slides)", user_id, len(paths),
+        )
+    except Exception:
+        logger.exception("Failed to send re-rendered sheet for user_id=%s", user_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Re-rendered, but couldn't send the preview. Try again.",
+        )
+
+
+@require_auth
 async def carousel_individual_route(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
