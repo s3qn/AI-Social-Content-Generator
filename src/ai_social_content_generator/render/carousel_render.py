@@ -74,7 +74,7 @@ def _slide_html(
     *,
     slide_text_html: str,
     handle: str,
-    motif_svg: str,
+    motif_html: str,
     show_swipe: bool,
     page_number: str | None,
     font_size_px: int,
@@ -97,7 +97,12 @@ def _slide_html(
         if page_number
         else ""
     )
-    motif_block = f'<div class="motif-wrap">{motif_svg}</div>' if motif_svg else ""
+    # The logo branch in render_carousel emits `<img class="motif-logo" ...>`,
+    # while _motif_svg emits SVGs with `class="motif"`. Substring-check the
+    # rendered fragment to tag the wrapper, so the larger / full-opacity logo
+    # override in CSS doesn't leak into the SVG motif path.
+    wrap_class = "motif-wrap has-logo" if "motif-logo" in motif_html else "motif-wrap"
+    motif_block = f'<div class="{wrap_class}">{motif_html}</div>' if motif_html else ""
 
     return f"""<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -160,7 +165,21 @@ html, body {{
   width: 220px; height: 220px;
   opacity: 0.85;
 }}
+.motif-wrap.has-logo {{
+  top: 90px;
+  width: 360px;
+  height: 360px;
+  opacity: 1;
+}}
 .motif {{ width: 100%; height: 100%; }}
+.motif-logo {{
+  width: 100%; height: 100%;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 3px 6px rgba(0,0,0,0.95))
+    drop-shadow(0 0 18px rgba(0,0,0,0.85))
+    drop-shadow(0 0 40px rgba(0,0,0,0.6));
+}}
 .text-wrap {{
   position: absolute;
   top: 50%; left: 0; right: 0;
@@ -223,9 +242,15 @@ async def render_carousel(
     background_path: Path,
     out_dir: Path,
     highlight_color: str = "#ff7a5c",
+    logo_path: Path | None = None,
 ) -> list[Path]:
     """Render each slide to a 1080x1350 PNG (2x device scale = 2160x2700)
-    over the background. Returns ordered output PNG paths."""
+    over the background. Returns ordered output PNG paths.
+
+    If logo_path is given and resolves to an existing file, hook and CTA
+    slides show that logo (object-fit:contain so non-square logos don't
+    stretch) instead of the built-in SVG motif. Body slides never show
+    a logo. A None or missing logo_path falls back to the SVG motifs."""
     if not slides:
         return []
     if not background_path.exists():
@@ -241,6 +266,16 @@ async def render_carousel(
     font_cormorant_b64 = _b64(_FONT_CORMORANT)
     bg_b64 = _b64(background_path)
     bg_mime = "image/jpeg" if background_path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+
+    # Encode the logo once. A bad/missing path silently falls back to
+    # the SVG motif — the renderer shouldn't crash a whole carousel
+    # because the user's logo file went away.
+    logo_b64: str | None = None
+    if logo_path is not None and logo_path.exists():
+        try:
+            logo_b64 = _b64(logo_path)
+        except Exception:
+            logo_b64 = None
 
     total = len(slides)
     written: list[Path] = []
@@ -270,10 +305,18 @@ async def render_carousel(
                     else None
                 )
 
+                if kind in ("hook", "cta") and logo_b64:
+                    motif_html = (
+                        f'<img class="motif-logo" '
+                        f'src="data:image/png;base64,{logo_b64}" alt="">'
+                    )
+                else:
+                    motif_html = _motif_svg(kind)
+
                 doc = _slide_html(
                     slide_text_html=slide_text_html,
                     handle=handle,
-                    motif_svg=_motif_svg(kind),
+                    motif_html=motif_html,
                     show_swipe=show_swipe,
                     page_number=page_number,
                     font_size_px=font_size,

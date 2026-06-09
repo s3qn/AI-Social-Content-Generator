@@ -51,6 +51,18 @@ def _resolve_background(user_id: int) -> Path:
     return DEFAULT_BACKGROUND
 
 
+def _resolve_logo(user_id: int) -> Path | None:
+    """Return the user's uploaded carousel logo if any, else None. The
+    renderer treats None / missing-file as "use the built-in SVG motif"."""
+    user_data = load_user(user_id)
+    logo = user_data.get("carousel_logo") if user_data else None
+    if logo:
+        p = Path(logo)
+        if p.exists():
+            return p
+    return None
+
+
 async def compose_carousel_from_picked(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -178,8 +190,11 @@ async def generate_carousel_images(
 
     try:
         bg = _resolve_background(user_id)
+        logo = _resolve_logo(user_id)
         out_dir = Path("cache") / "render" / str(user_id)
-        paths = await render_carousel(data["slides"], data["handle"], bg, out_dir)
+        paths = await render_carousel(
+            data["slides"], data["handle"], bg, out_dir, logo_path=logo,
+        )
         sheet = build_contact_sheet(paths, out_dir / "contact_sheet.png")
     except Exception:
         logger.exception("Carousel image render failed for user_id=%s", user_id)

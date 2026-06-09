@@ -27,6 +27,8 @@ from ai_social_content_generator.telegram_bot.actions.settings import (
     settings_submenu_route,
     scheduler_submenu_route,
     receive_background_photo,
+    receive_logo_document,
+    customize_submenu_route,
 )
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
@@ -179,7 +181,13 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             settings_submenu_route,
-            pattern=r"^settings_(edit_niche|scheduler|back|upload_bg|connect_ig)$",
+            pattern=r"^settings_(edit_niche|scheduler|back|connect_ig|customize)$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            customize_submenu_route,
+            pattern=r"^customize_(background|logo|back)$",
         )
     )
     application.add_handler(
@@ -219,10 +227,12 @@ if __name__ == '__main__':
             carousel_cancel_route, pattern=r"^gen_carousel_cancel$"
         )
     )
-    # Global photo handler — registered LAST so it doesn't shadow any
-    # ConversationHandler photo state (there isn't one today, but order
-    # is the future-safe default). The handler is flag-gated and ignores
-    # photos unless context.user_data['awaiting_bg_upload'] is True.
+    # Global photo + document handlers — registered LAST so they don't
+    # shadow any ConversationHandler media states (there aren't any
+    # today, but order is the future-safe default). Both handlers are
+    # flag-gated on a per-flow flag in user_data and consume their flag
+    # immediately, so stray uploads are silently ignored.
     application.add_handler(MessageHandler(filters.PHOTO, receive_background_photo))
+    application.add_handler(MessageHandler(filters.Document.IMAGE, receive_logo_document))
     application.run_polling()
 

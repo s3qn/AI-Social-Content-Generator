@@ -44,7 +44,7 @@ async def settings_submenu_show(
     keyboard = [
         [InlineKeyboardButton("✏️ Edit niche", callback_data="settings_edit_niche")],
         [InlineKeyboardButton(scheduler_label, callback_data="settings_scheduler")],
-        [InlineKeyboardButton("🖼 Carousel background", callback_data="settings_upload_bg")],
+        [InlineKeyboardButton("🎨 Customize carousel", callback_data="settings_customize")],
         [InlineKeyboardButton(ig_label, callback_data="settings_connect_ig")],
         [InlineKeyboardButton("← Back", callback_data="settings_back")],
     ]
@@ -78,16 +78,8 @@ async def settings_submenu_route(
         await settings_submenu_show(update, context)
     elif query.data == "settings_scheduler":
         await scheduler_submenu_show(update, context)
-    elif query.data == "settings_upload_bg":
-        context.user_data["awaiting_bg_upload"] = True
-        await query.edit_message_text(
-            "🖼 Send me an image to use as your carousel background.\n\n"
-            "Rules for a clean result:\n"
-            "1. No text on the image — no title, subtitle, or handle. The bot adds all text.\n"
-            "2. Portrait 4:5 (1080×1350) works best.\n"
-            "3. Leave a calm area (top or middle) for the text to sit.\n\n"
-            "Send the photo now, or tap /cancel."
-        )
+    elif query.data == "settings_customize":
+        await customize_submenu_show(update, context)
     elif query.data == "settings_connect_ig":
         await instagram_connect_show(update, context)
     elif query.data == "settings_back":
@@ -98,6 +90,61 @@ async def settings_submenu_route(
             "What would you like to do?",
             reply_markup=_main_menu_keyboard(),
         )
+
+
+@require_auth
+async def customize_submenu_show(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Sub-menu under Settings: Background + Logo + Back."""
+    keyboard = [
+        [InlineKeyboardButton("🖼 Background", callback_data="customize_background")],
+        [InlineKeyboardButton("🏷 Logo", callback_data="customize_logo")],
+        [InlineKeyboardButton("← Back", callback_data="customize_back")],
+    ]
+    text = "🎨 Customize carousel"
+    query = update.callback_query
+    if query is not None:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+
+@require_auth
+async def customize_submenu_route(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Dispatch from the Customize-carousel sub-menu."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "customize_background":
+        context.user_data["awaiting_bg_upload"] = True
+        await query.edit_message_text(
+            "🖼 Send me an image to use as your carousel background.\n\n"
+            "Rules for a clean result:\n"
+            "1. No text on the image — no title, subtitle, or handle. The bot adds all text.\n"
+            "2. Portrait 4:5 (1080×1350) works best.\n"
+            "3. Leave a calm area (top or middle) for the text to sit.\n\n"
+            "Send the photo now, or tap /cancel."
+        )
+    elif query.data == "customize_logo":
+        context.user_data["awaiting_logo_upload"] = True
+        await query.edit_message_text(
+            "🏷 Send your logo as a FILE (paperclip → File), NOT as a photo — "
+            "sending as a photo flattens transparency.\n\n"
+            "Use a transparent PNG, roughly square. It will appear on the hook "
+            "and final slides in place of the default motif.\n\n"
+            "Send the file now, or tap /cancel."
+        )
+    elif query.data == "customize_back":
+        await settings_submenu_show(update, context)
 
 
 @require_auth
@@ -286,6 +333,9 @@ async def receive_background_photo(
         from ai_social_content_generator.render.carousel_render import (
             render_carousel,
         )
+        from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+            _resolve_logo,
+        )
         sample = [
             {
                 "type": "hook",
@@ -295,7 +345,9 @@ async def receive_background_photo(
             }
         ]
         out_dir = Path("cache") / "render" / str(user_id) / "bg_preview"
-        paths = await render_carousel(sample, handle, dest, out_dir)
+        paths = await render_carousel(
+            sample, handle, dest, out_dir, logo_path=_resolve_logo(user_id),
+        )
         if paths:
             with open(paths[0], "rb") as f:
                 await update.message.reply_photo(
@@ -306,3 +358,84 @@ async def receive_background_photo(
         logger.exception(
             "Background preview render failed for user_id=%s", user_id,
         )
+
+
+@require_auth
+async def receive_logo_document(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Global filters.Document.IMAGE handler. Flag-gated on
+    awaiting_logo_upload (gate is the FIRST line so stray document
+    uploads in unrelated chats are silently ignored). The flag is
+    consumed immediately to avoid double-fires.
+
+    The doc bytes are saved raw — Telegram only preserves transparency
+    for documents, not photos. That's why the prompt insists the user
+    sends as a FILE rather than a photo."""
+    if not context.user_data.get("awaiting_logo_upload"):
+        return
+    context.user_data["awaiting_logo_upload"] = False
+
+    user_id = update.effective_user.id
+    user_data = load_user(user_id)
+    if not user_data or "handle" not in user_data:
+        await update.message.reply_text("Please complete onboarding first.")
+        return
+    handle = user_data["handle"]
+
+    doc = update.message.document if update.message else None
+    if not doc or not (doc.mime_type or "").startswith("image/"):
+        await update.message.reply_text(
+            "That wasn't an image file. Open Settings → Customize carousel → "
+            "Logo and send a transparent PNG as a FILE."
+        )
+        return
+
+    tg_file = await doc.get_file()
+    dest = Path("cache") / f"{handle}-logo.png"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    await tg_file.download_to_drive(custom_path=str(dest))
+
+    user_data["carousel_logo"] = str(dest)
+    save_user(user_id, user_data)
+    logger.info(
+        "Saved carousel logo for user_id=%s handle=%s -> %s", user_id, handle, dest,
+    )
+
+    await update.message.reply_text(
+        "✅ Logo saved. It will appear on your hook and final slides."
+    )
+
+    # Hook-slide preview WITH the logo so the user can spot a white box
+    # or background fringe before relying on it. Needs a background to
+    # render against — fall back to the user's current bg or the default.
+    try:
+        from ai_social_content_generator.render.carousel_render import (
+            render_carousel,
+        )
+        from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+            _resolve_background,
+        )
+        sample = [
+            {
+                "type": "hook",
+                "n": 1,
+                "text": "דוגמה: *הכותרת שלך* כאן",
+                "sub": None,
+            }
+        ]
+        out_dir = Path("cache") / "render" / str(user_id) / "logo_preview"
+        paths = await render_carousel(
+            sample, handle, _resolve_background(user_id), out_dir, logo_path=dest,
+        )
+        if paths:
+            with open(paths[0], "rb") as f:
+                await update.message.reply_photo(
+                    photo=f,
+                    caption=(
+                        "Preview — is the logo clean (no white box)? "
+                        "If it has a background, re-send a transparent PNG."
+                    ),
+                )
+    except Exception:
+        logger.exception("Logo preview render failed for user_id=%s", user_id)
