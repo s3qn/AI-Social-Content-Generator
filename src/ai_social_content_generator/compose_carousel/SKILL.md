@@ -116,35 +116,43 @@ CRITICAL RULES (do not break these):
 5. The CTA (last slide) must be specific and actionable.
 6. Match the language of the top-performing posts. If they wrote in 
    Hebrew, the entire output is in Hebrew.
-7. Voice should feel like the creator wrote it.
-8. The engagement_digest shows what worked in ONE corner of the
+7. HEBREW GRAMMATICAL GENDER. The creator's grammatical gender is: {gender}.
+   When writing in Hebrew, ALL verbs, adjectives, and second-person forms
+   that refer to the creator (the "I"/speaker voice) MUST use the correct
+   gendered forms for a {gender} subject. Hebrew is gendered: a male and
+   a female speaker conjugate differently. Do not mix forms. If the value
+   above is empty or not provided, write as you would by default (do not
+   guess). This rule covers the creator's own voice only; addressing the
+   audience is out of scope here.
+8. Voice should feel like the creator wrote it.
+9. The engagement_digest shows what worked in ONE corner of the
    creator's broader expertise. Use it as reference for VOICE and
    RHYTHM only — not as a template for topic angle, emotional
    anchor, or subject matter. The chosen topic determines the
    territory. If the chosen topic is far from the digest examples,
    that is intentional: the creator has broader expertise than the
    digest reflects. Match the voice, not the subject.
-9. Competitor data is for STRUCTURE only, not for content. Extract 
-   patterns (hook style, slide flow, CTA type, topic framing). Do NOT 
-   borrow topics, examples, or specific claims from competitor posts. 
-   Form from competitors, substance from the creator's niche.
-10. The Attribution section is MANDATORY whenever competitor data is 
+10. Competitor data is for STRUCTURE only, not for content. Extract 
+    patterns (hook style, slide flow, CTA type, topic framing). Do NOT 
+    borrow topics, examples, or specific claims from competitor posts. 
+    Form from competitors, substance from the creator's niche.
+11. The Attribution section is MANDATORY whenever competitor data is 
     present in the input above. List which competitors influenced your 
     output and the specific structural pattern from each. Do not omit. 
     Format: "- @handle ... pattern" on separate lines, one per competitor.
-11. DO NOT USE THE EM-DASH CHARACTER. Use periods, commas, parentheses, 
+12. DO NOT USE THE EM-DASH CHARACTER. Use periods, commas, parentheses, 
     semicolons, or colons instead. The em-dash is an AI-text marker. 
     Write like a real person.
-12. Avoid AI-text patterns: "It's not just X, it's Y" constructions, 
+13. Avoid AI-text patterns: "It's not just X, it's Y" constructions, 
     "Let me be clear", "delve", "tapestry", "leverage", "robust", 
     "navigate the complexities". Write naturally, not like a marketing blog.
-13. Visual descriptions must use real-world metaphors, NOT literal 
+14. Visual descriptions must use real-world metaphors, NOT literal 
     coaching scenes (no two chairs, no dim rooms, no hands across desks). 
     Each slide visual must be a different metaphor.
-14. The Slide 1 hook MUST be the chosen headline (or a minor clarity 
+15. The Slide 1 hook MUST be the chosen headline (or a minor clarity 
     refinement of it). Do not invent a new hook. Do not drift to a 
     different topic.
-15. In each slide's Text, wrap the single most emotionally-loaded BEAT in
+16. In each slide's Text, wrap the single most emotionally-loaded BEAT in
     *asterisks* to mark it for visual highlight when rendered to images.
     A "beat" is the phrase the slide turns on — usually 1 to 4 words,
     and often a verb phrase or a contrast, not an isolated noun.

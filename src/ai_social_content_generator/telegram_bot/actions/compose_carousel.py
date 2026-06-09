@@ -646,6 +646,11 @@ def _format_analysis_for_prompt(analysis: dict) -> dict:
     themes = analysis.get("recurring_themes", [])
     top_posts = analysis.get("top_posts", [])
     patterns = analysis.get("engagement_patterns", [])
+    # Lowercase so 'Male' / 'Female' / 'MALE' from older or stricter models
+    # all normalize to the values the SKILL rule expects. Empty string when
+    # the field is missing (analyses from before the gender field landed) —
+    # the SKILL rule has an explicit empty-string fallback for that case.
+    gender = str(analysis.get("gender") or "").strip().lower()
 
     voice_str = ", ".join(voice) if isinstance(voice, list) else str(voice)
 
@@ -676,6 +681,7 @@ def _format_analysis_for_prompt(analysis: dict) -> dict:
         "handle": handle,
         "niche": niche,
         "voice": voice_str,
+        "gender": gender,
         "recurring_themes": themes_str,
         "top_posts": top_posts_str,
         "engagement_patterns": patterns_str,

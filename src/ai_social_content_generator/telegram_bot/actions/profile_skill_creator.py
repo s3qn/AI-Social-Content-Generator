@@ -231,6 +231,20 @@ CRITICAL INSTRUCTIONS:
 - Do NOT redefine the niche based on caption topics.
 - If bio and captions seem to contradict, the bio wins.
 - Respond in English.
+- gender: the grammatical gender of the account OWNER (the person whose
+  voice the content speaks in). This drives Hebrew grammar downstream,
+  so be careful. Determine it using these signals, in order of reliability:
+  1. STRONGEST — if the posts are in Hebrew, look at the gendered
+     verb/adjective forms the creator uses about THEMSELVES (e.g.
+     "אני עוזר" masculine vs "אני עוזרת" feminine; "מאמן" vs "מאמנת").
+     The creator's own self-referential grammar is the most authoritative
+     signal — read it off their text rather than guessing.
+  2. The bio: gendered job titles or self-descriptions (Hebrew titles are
+     gendered: מאמן/מאמנת, יועץ/יועצת, etc.).
+  3. The display name / full name.
+  Respond with exactly "male" or "female" (lowercase). Prefer signal 1
+  when the posts are Hebrew; fall back to 2 and 3 otherwise. Make your
+  best determination from the available evidence.
 
 OUTPUT FORMAT:
 Return ONLY a single valid JSON object. No markdown fences, no prose
@@ -241,6 +255,7 @@ before or after. The object must have exactly these keys:
   "niche": "<1-2 sentences anchored on bio>",
   "niche_source": "inferred_from_bio",
   "account_owner": "<2-3 sentences: credentials and expertise from bio>",
+  "gender": "<male | female>",
   "target_audience": "<2-3 sentences inferred from content>",
   "voice": ["<descriptor>", "<descriptor>", "<descriptor>"],
   "recurring_themes": ["<theme>", "<theme>", "<theme>"],
@@ -314,6 +329,20 @@ CRITICAL INSTRUCTIONS:
   stated niche wins.
 - Caption topics are evidence of voice/themes, not niche.
 - Respond in English.
+- gender: the grammatical gender of the account OWNER (the person whose
+  voice the content speaks in). This drives Hebrew grammar downstream,
+  so be careful. Determine it using these signals, in order of reliability:
+  1. STRONGEST — if the posts are in Hebrew, look at the gendered
+     verb/adjective forms the creator uses about THEMSELVES (e.g.
+     "אני עוזר" masculine vs "אני עוזרת" feminine; "מאמן" vs "מאמנת").
+     The creator's own self-referential grammar is the most authoritative
+     signal — read it off their text rather than guessing.
+  2. The bio: gendered job titles or self-descriptions (Hebrew titles are
+     gendered: מאמן/מאמנת, יועץ/יועצת, etc.).
+  3. The display name / full name.
+  Respond with exactly "male" or "female" (lowercase). Prefer signal 1
+  when the posts are Hebrew; fall back to 2 and 3 otherwise. Make your
+  best determination from the available evidence.
 
 OUTPUT FORMAT:
 Return ONLY a single valid JSON object. No markdown fences, no prose
@@ -324,6 +353,7 @@ before or after. The object must have exactly these keys:
   "niche": "{niche}",
   "niche_source": "user_provided",
   "account_owner": "<2-3 sentences: credentials and expertise from bio>",
+  "gender": "<male | female>",
   "target_audience": "<2-3 sentences inferred from content + the stated niche>",
   "voice": ["<descriptor>", "<descriptor>", "<descriptor>"],
   "recurring_themes": ["<theme>", "<theme>", "<theme>"],
