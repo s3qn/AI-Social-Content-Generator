@@ -143,7 +143,7 @@ html, body {{
 }}
 .handle {{
   position: absolute;
-  bottom: 70px; left: 0; right: 0;
+  bottom: 110px; left: 0; right: 0;
   text-align: center;
   font-family: 'CormorantItalic', serif;
   font-style: italic;
