@@ -27,5 +27,41 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await viral_receive_keyword(update, context)
         return
 
+    editing = context.user_data.get("editing_slide")
+    if editing is not None:
+        new_text = (update.message.text or "").strip()
+        if not new_text:
+            # Empty / whitespace-only: keep the flag set so the user can try again.
+            await update.message.reply_text(
+                "That's empty — send the corrected text for the slide."
+            )
+            return
+
+        data = context.user_data.get("last_carousel")
+        slides = data.get("slides") if data else None
+        if not slides or editing < 1 or editing > len(slides):
+            # Stash gone or index out of range: clear the flag and explain.
+            context.user_data.pop("editing_slide", None)
+            await update.message.reply_text(
+                "Couldn't find that carousel anymore. Generate again."
+            )
+            return
+
+        slides[editing - 1]["text"] = new_text
+        context.user_data.pop("editing_slide", None)
+        await update.message.reply_text("✏️ Updating slide…")
+
+        # Local import — compose_carousel pulls heavy modules (Playwright,
+        # IG SDK). Importing at module top would slow every text message.
+        from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+            _rerender_and_send,
+        )
+        await _rerender_and_send(
+            update, context,
+            progress_text="🎨 Re-rendering with your edit…",
+            success_caption="Slide updated.",
+        )
+        return
+
     await menu_popup(update, context)
 

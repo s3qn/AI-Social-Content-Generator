@@ -51,6 +51,29 @@ def _resolve_background(user_id: int) -> Path:
     return DEFAULT_BACKGROUND
 
 
+def _carousel_action_keyboard() -> InlineKeyboardMarkup:
+    """Buttons attached to every contact-sheet message — initial generate,
+    re-render, and post-edit. One helper so the set can't drift between
+    callers (the spec was explicit about this)."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ Edit text", callback_data="gen_carousel_edit")],
+        [InlineKeyboardButton(
+            "📥 Get individual posts", callback_data="gen_carousel_individual"
+        )],
+        [InlineKeyboardButton(
+            "📤 Upload to Instagram", callback_data="gen_carousel_publish"
+        )],
+    ])
+
+
+def _escape_codeblock(s: str) -> str:
+    """Escape a string for a MarkdownV2 ``` ``` ``` code block. Inside a
+    fenced code block, only backslash and backtick need escaping —
+    asterisks and underscores render literally, which is exactly what we
+    want so the user can SEE and edit the *highlight* markers."""
+    return s.replace("\\", "\\\\").replace("`", "\\`")
+
+
 def _resolve_logo(user_id: int) -> Path | None:
     """Return the user's uploaded carousel logo if any, else None. The
     renderer treats None / missing-file as "use the built-in SVG motif"."""
@@ -209,21 +232,13 @@ async def generate_carousel_images(
         "sheet": str(sheet),
     }
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            "📥 Get individual posts", callback_data="gen_carousel_individual"
-        )],
-        [InlineKeyboardButton(
-            "📤 Upload to Instagram", callback_data="gen_carousel_publish"
-        )],
-    ])
     try:
         with open(sheet, "rb") as f:
             await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=f,
                 caption="Here's your carousel.",
-                reply_markup=kb,
+                reply_markup=_carousel_action_keyboard(),
             )
         logger.info(
             "Sent carousel sheet to user_id=%s (%d slides)", user_id, len(paths),
@@ -236,38 +251,35 @@ async def generate_carousel_images(
         )
 
 
-@require_auth
-async def rerender_current_carousel(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+async def _rerender_and_send(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    progress_text: str,
+    success_caption: str,
 ) -> None:
-    """Re-render the session's current carousel with whatever background
-    + logo are set NOW, without going back to Claude. Same parsed slides,
-    fresh visual styling.
+    """Shared re-render path: pull slides from last_carousel, resolve bg
+    and logo fresh, render, build sheet, overwrite last_render so a
+    follow-up publish picks up the new images, and send the sheet with
+    the action keyboard. Used by both the Re-render menu action and the
+    edit-capture flow.
 
-    Session-only: reads from context.user_data["last_carousel"], which is
-    in-memory and does not survive a bot restart. The natural use case
-    happens right after generating, so this is fine in practice and we
-    degrade gracefully when the stash is gone."""
-    query = update.callback_query
-    await query.answer()
+    Caller is responsible for guarding the no-stash case before calling
+    this — by the time we're here, last_carousel must be present and
+    have slides."""
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
     data = context.user_data.get("last_carousel")
     if not data or not data.get("slides"):
+        # Defensive — callers should have guarded already, but never crash.
         await context.bot.send_message(
             chat_id=chat_id,
-            text=(
-                "No recent carousel to re-render. Generate a carousel first, "
-                "then change the background or logo and come back here."
-            ),
+            text="No recent carousel to re-render. Generate a carousel first.",
         )
         return
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="🔄 Re-rendering with your current background/logo…",
-    )
+    await context.bot.send_message(chat_id=chat_id, text=progress_text)
 
     try:
         bg = _resolve_background(user_id)
@@ -292,21 +304,13 @@ async def rerender_current_carousel(
         "sheet": str(sheet),
     }
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            "📥 Get individual posts", callback_data="gen_carousel_individual"
-        )],
-        [InlineKeyboardButton(
-            "📤 Upload to Instagram", callback_data="gen_carousel_publish"
-        )],
-    ])
     try:
         with open(sheet, "rb") as f:
             await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=f,
-                caption="Re-rendered with your current styling.",
-                reply_markup=kb,
+                caption=success_caption,
+                reply_markup=_carousel_action_keyboard(),
             )
         logger.info(
             "Re-rendered carousel for user_id=%s (%d slides)", user_id, len(paths),
@@ -316,6 +320,149 @@ async def rerender_current_carousel(
         await context.bot.send_message(
             chat_id=chat_id,
             text="Re-rendered, but couldn't send the preview. Try again.",
+        )
+
+
+@require_auth
+async def rerender_current_carousel(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Re-render the session's current carousel with whatever background
+    + logo are set NOW, without going back to Claude. Same parsed slides,
+    fresh visual styling.
+
+    Session-only: reads from context.user_data["last_carousel"], which is
+    in-memory and does not survive a bot restart. The natural use case
+    happens right after generating, so this is fine in practice and we
+    degrade gracefully when the stash is gone."""
+    query = update.callback_query
+    await query.answer()
+
+    data = context.user_data.get("last_carousel")
+    if not data or not data.get("slides"):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=(
+                "No recent carousel to re-render. Generate a carousel first, "
+                "then change the background or logo and come back here."
+            ),
+        )
+        return
+
+    await _rerender_and_send(
+        update, context,
+        progress_text="🔄 Re-rendering with your current background/logo…",
+        success_caption="Re-rendered with your current styling.",
+    )
+
+
+def _edit_slide_picker(slide_count: int) -> InlineKeyboardMarkup:
+    """Slide-picker keyboard for the Edit-text flow. One row per three
+    slides keeps the picker compact for 5-9 slides; trailing Cancel."""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for i in range(1, slide_count + 1):
+        row.append(InlineKeyboardButton(f"Slide {i}", callback_data=f"edit_slide_{i}"))
+        if len(row) == 3:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
+@require_auth
+async def carousel_edit_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Edit-text tap: show a per-slide picker (Slide 1 / Slide 2 / … +
+    Cancel), or a friendly message if there's no current carousel in the
+    session stash."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    data = context.user_data.get("last_carousel")
+    slides = data.get("slides") if data else None
+    if not slides:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Generate a carousel first, then tap Edit text.",
+        )
+        return
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="✏️ Pick a slide to edit:",
+        reply_markup=_edit_slide_picker(len(slides)),
+    )
+
+
+@require_auth
+async def carousel_edit_slide_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """User picked a specific slide to edit. Stash editing_slide so the
+    next text message gets captured as the new slide text. Send the
+    current raw text in a MarkdownV2 code block (asterisks visible and
+    copyable; backslash/backtick are the only chars that need escaping
+    inside a fenced code block)."""
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+
+    try:
+        n = int(query.data.removeprefix("edit_slide_"))
+    except ValueError:
+        await query.answer("Bad slide pick.", show_alert=True)
+        return
+
+    data = context.user_data.get("last_carousel")
+    slides = data.get("slides") if data else None
+    if not slides or n < 1 or n > len(slides):
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't find that slide. Generate a carousel again.",
+        )
+        return
+
+    await query.answer()
+
+    context.user_data["editing_slide"] = n
+    slide_text = slides[n - 1].get("text", "") or ""
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✏️ Editing Slide {n}. Here's the current text — tap to copy, "
+            "edit it, and send it back.\n\n"
+            "Tip: keep or move the *stars* to control which words are "
+            "highlighted in the image."
+        ),
+    )
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"```\n{_escape_codeblock(slide_text)}\n```",
+        parse_mode="MarkdownV2",
+    )
+
+
+@require_auth
+async def carousel_edit_cancel_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """User backed out of the picker. Clear the flag and acknowledge —
+    no edit, no re-render."""
+    query = update.callback_query
+    await query.answer()
+    context.user_data.pop("editing_slide", None)
+    try:
+        await query.edit_message_text("Edit cancelled.")
+    except Exception:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Edit cancelled.",
         )
 
 
