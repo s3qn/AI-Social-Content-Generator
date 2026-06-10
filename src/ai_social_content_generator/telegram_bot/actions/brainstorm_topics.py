@@ -16,12 +16,12 @@ from ai_social_content_generator.telegram_bot.actions.profile_skill_creator impo
 logger = logging.getLogger(__name__)
 
 SKILL_PATH = Path("src/ai_social_content_generator/brainstorm_topics/SKILL.md")
-POLISH_PATH = Path("src/ai_social_content_generator/brainstorm_topics/POLISH.md")
+# POLISH.md still exists on disk but is unused since the Polish flow was
+# replaced by "Keep idea as-is" (no Claude call).
 EXPAND_PATH = Path("src/ai_social_content_generator/brainstorm_topics/EXPAND.md")
 
 MAX_MESSAGE_LEN = 4000
 MIN_PARSED_TOPICS = 5
-MAX_POLISHED_LEN = 200
 
 WAITING_FOR_OWN_IDEA = 200
 
@@ -178,7 +178,7 @@ async def own_idea_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data["pending_own_idea"] = idea
 
     keyboard = [
-        [InlineKeyboardButton("✨ Polish this idea", callback_data="brainstorm_own_polish")],
+        [InlineKeyboardButton("💾 Keep idea as-is", callback_data="brainstorm_own_keep")],
         [InlineKeyboardButton("🌱 Expand to many", callback_data="brainstorm_own_expand")],
     ]
     await update.message.reply_text(
@@ -188,11 +188,45 @@ async def own_idea_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return ConversationHandler.END
 
 
+async def brainstorm_own_keep(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Stores the user's raw idea in the vault verbatim. No Claude call."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+
+    idea = context.user_data.get("pending_own_idea", "")
+    if not idea:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="No pending idea found. Tap 'Write my own idea' again.",
+        )
+        return
+
+    user_data = load_user(user_id)
+    if user_data is None or "handle" not in user_data or "niche" not in user_data:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="No account info. Please complete onboarding first.",
+        )
+        return
+
+    add_topic(user_data, idea)
+    save_user(user_id, user_data)
+
+    context.user_data.pop("pending_own_idea", None)
+
+    await query.edit_message_text(f"💾 Idea added to your vault: '{idea}'")
+
+    logger.info(
+        "Brainstorm-own keep complete for handle=%s", user_data["handle"]
+    )
+
+
 async def brainstorm_own_process(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     idea: str,
-    mode: str,
 ) -> None:
     query = update.callback_query
     user_id = update.effective_user.id
@@ -204,8 +238,7 @@ async def brainstorm_own_process(
         )
         return
 
-    progress = "Polishing your idea, ~30 sec..." if mode == "polish" else "Expanding your idea, ~30 sec..."
-    await query.edit_message_text(progress)
+    await query.edit_message_text("Expanding your idea, ~30 sec...")
 
     user_data = load_user(user_id)
 
@@ -225,16 +258,8 @@ async def brainstorm_own_process(
         )
         return
 
-    if mode == "polish":
-        template = POLISH_PATH.read_text(encoding="utf-8")
-        prompt = template.format(
-            idea=idea,
-            niche=base_ctx["niche"],
-            voice_str=base_ctx["voice_str"],
-        )
-    else:
-        template = EXPAND_PATH.read_text(encoding="utf-8")
-        prompt = template.format(idea=idea, **base_ctx)
+    template = EXPAND_PATH.read_text(encoding="utf-8")
+    prompt = template.format(idea=idea, **base_ctx)
 
     claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
@@ -242,55 +267,37 @@ async def brainstorm_own_process(
 
     if claude_reply is None or returncode != 0 or not raw_output:
         logger.error(
-            "Brainstorm-own %s: Claude failed for handle=%s reply=%r",
-            mode, handle, claude_reply,
+            "Brainstorm-own expand: Claude failed for handle=%s reply=%r",
+            handle, claude_reply,
         )
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"{mode.capitalize()} failed, try again.",
+            text="Expand failed, try again.",
         )
         return
 
-    if mode == "polish":
-        polished = raw_output.strip().strip('"').strip("'").split("\n")[0].strip()
-        if not polished or len(polished) > MAX_POLISHED_LEN:
-            logger.error(
-                "Brainstorm-own polish: invalid output for handle=%s raw=%r",
-                handle, raw_output,
-            )
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Polish failed, try again.",
-            )
-            return
+    parsed = re.findall(r"^\s*\d+\.\s*(.+?)\s*$", raw_output, re.MULTILINE)
+    topics_text = [t.strip() for t in parsed if t.strip()]
 
-        add_topic(user_data, polished)
-        save_user(user_id, user_data)
+    if len(topics_text) < MIN_PARSED_TOPICS:
+        logger.error(
+            "Brainstorm-own expand: parsed too few topics (%d) for handle=%s raw=%r",
+            len(topics_text), handle, raw_output,
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Expand failed, try again.",
+        )
+        return
 
-        message = f"✨ Polished topic added: '{polished}'"
-    else:
-        parsed = re.findall(r"^\s*\d+\.\s*(.+?)\s*$", raw_output, re.MULTILINE)
-        topics_text = [t.strip() for t in parsed if t.strip()]
+    for topic_text in topics_text:
+        add_topic(user_data, topic_text)
+    save_user(user_id, user_data)
 
-        if len(topics_text) < MIN_PARSED_TOPICS:
-            logger.error(
-                "Brainstorm-own expand: parsed too few topics (%d) for handle=%s raw=%r",
-                len(topics_text), handle, raw_output,
-            )
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Expand failed, try again.",
-            )
-            return
-
-        for topic_text in topics_text:
-            add_topic(user_data, topic_text)
-        save_user(user_id, user_data)
-
-        lines = [f"{i + 1}. {t}" for i, t in enumerate(topics_text)]
-        message = f"🌱 Generated {len(topics_text)} topics from your idea:\n\n" + "\n".join(lines)
-        if len(message) > MAX_MESSAGE_LEN:
-            message = message[:MAX_MESSAGE_LEN - 3] + "..."
+    lines = [f"{i + 1}. {t}" for i, t in enumerate(topics_text)]
+    message = f"🌱 Generated {len(topics_text)} topics from your idea:\n\n" + "\n".join(lines)
+    if len(message) > MAX_MESSAGE_LEN:
+        message = message[:MAX_MESSAGE_LEN - 3] + "..."
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -300,8 +307,8 @@ async def brainstorm_own_process(
     context.user_data.pop("pending_own_idea", None)
 
     logger.info(
-        "Brainstorm-own %s complete for handle=%s",
-        mode, handle,
+        "Brainstorm-own expand complete for handle=%s",
+        handle,
     )
 
     from ai_social_content_generator.telegram_bot.actions.menu import brainstorm_submenu_show

@@ -10,6 +10,8 @@ from ai_social_content_generator.telegram_bot.actions.menu import main_menu_rout
 from ai_social_content_generator.telegram_bot.actions.content_picker import (
     topic_picker_route,
     headline_picker_route,
+    headline_mode_route,
+    headline_regen_route,
     topic_picker_back_route,
     reel_format_picker_route,
 )
@@ -165,6 +167,12 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(headline_picker_route, pattern="^headline_pick_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(headline_mode_route, pattern=r"^headline_mode_(ai|own)$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(headline_regen_route, pattern=r"^headline_regen$")
     )
     application.add_handler(
         CallbackQueryHandler(reel_format_picker_route, pattern="^reel_format_")

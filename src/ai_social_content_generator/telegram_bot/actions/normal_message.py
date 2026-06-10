@@ -63,5 +63,24 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if context.user_data.get("awaiting_custom_headline"):
+        headline = (update.message.text or "").strip()
+        if not headline or len(headline) > 200:
+            # Keep the flag set so the user can try again.
+            await update.message.reply_text(
+                "Send a headline between 1 and 200 characters."
+            )
+            return
+
+        context.user_data.pop("awaiting_custom_headline", None)
+
+        # Local import — content_picker pulls the compose modules
+        # (Playwright, IG SDK). Same reason as _rerender_and_send above.
+        from ai_social_content_generator.telegram_bot.actions.content_picker import (
+            _use_headline,
+        )
+        await _use_headline(update, context, headline)
+        return
+
     await menu_popup(update, context)
 

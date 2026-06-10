@@ -26,6 +26,8 @@ COMPETITOR SIGNAL (recent top performers, last 14 days where available):
 
 {competitor_section}
 
+{previous_headlines_section}
+
 YOUR TASK
 
 Generate exactly 7 to 10 hooks for the chosen topic above.

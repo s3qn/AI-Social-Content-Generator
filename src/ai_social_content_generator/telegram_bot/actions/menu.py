@@ -2,7 +2,7 @@ from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import is_onboarded, load_user, save_user
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import analyze_from_vault
 from ai_social_content_generator.telegram_bot.actions.competitors import remove_competitor
-from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault, brainstorm_own_process
+from ai_social_content_generator.telegram_bot.actions.brainstorm_topics import brainstorm_topics_from_vault, brainstorm_own_process, brainstorm_own_keep
 from ai_social_content_generator.telegram_bot.actions.content_picker import content_picker_entry, reel_format_picker_show
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
@@ -243,13 +243,12 @@ async def brainstorm_submenu_route(update: Update, context: ContextTypes.DEFAULT
     elif query.data == "brainstorm_source_auto":
         await brainstorm_topics_from_vault(update, context)
 
-    elif query.data == "brainstorm_own_polish":
-        idea = context.user_data.get("pending_own_idea", "")
-        await brainstorm_own_process(update, context, idea, mode="polish")
+    elif query.data == "brainstorm_own_keep":
+        await brainstorm_own_keep(update, context)
 
     elif query.data == "brainstorm_own_expand":
         idea = context.user_data.get("pending_own_idea", "")
-        await brainstorm_own_process(update, context, idea, mode="expand")
+        await brainstorm_own_process(update, context, idea)
 
     elif query.data == "brainstorm_remove":
         await brainstorm_remove_buttons(update, context)
