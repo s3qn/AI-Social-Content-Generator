@@ -61,6 +61,8 @@ from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     carousel_edit_show,
     carousel_edit_slide_route,
     carousel_edit_cancel_route,
+    carousel_makereel_route,
+    carousel_makereel_format_route,
 )
 
 logging.basicConfig(
@@ -246,6 +248,14 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(carousel_edit_cancel_route, pattern=r"^edit_cancel$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(carousel_makereel_route, pattern=r"^gen_carousel_makereel$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_makereel_format_route, pattern=r"^convert_reel_(text|talking)$"
+        )
     )
     # Global photo + document handlers — registered LAST so they don't
     # shadow any ConversationHandler media states (there aren't any

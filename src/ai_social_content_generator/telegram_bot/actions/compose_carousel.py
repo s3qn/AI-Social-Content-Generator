@@ -57,6 +57,7 @@ def _carousel_action_keyboard() -> InlineKeyboardMarkup:
     callers (the spec was explicit about this)."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✏️ Edit text", callback_data="gen_carousel_edit")],
+        [InlineKeyboardButton("🎬 Make a reel", callback_data="gen_carousel_makereel")],
         [InlineKeyboardButton(
             "📥 Get individual posts", callback_data="gen_carousel_individual"
         )],
@@ -711,6 +712,65 @@ async def carousel_cancel_route(
             chat_id=update.effective_chat.id,
             text="Cancelled — nothing was posted.",
         )
+
+
+@require_auth
+async def carousel_makereel_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Make-a-reel tap on the contact-sheet message: show the reel format
+    picker. Sent as a NEW message — the button lives on a photo message,
+    which can't edit_message_text into a picker."""
+    query = update.callback_query
+    await query.answer()
+
+    data = context.user_data.get("last_carousel")
+    if not data or not data.get("slides"):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Generate a carousel first.",
+        )
+        return
+
+    keyboard = [
+        [InlineKeyboardButton(
+            "📝 Text overlay (low effort)", callback_data="convert_reel_text"
+        )],
+        [InlineKeyboardButton(
+            "🎤 Talking head (speak to camera)", callback_data="convert_reel_talking"
+        )],
+    ]
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=(
+            "How do you want this reel to look?\n\n"
+            "📝 Text overlay: viewers READ text over a simple b-roll video. "
+            "No speaking needed. Low effort to shoot.\n\n"
+            "🎤 Talking head: you speak to the camera. More personal but "
+            "more effort."
+        ),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def carousel_makereel_format_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "convert_reel_text":
+        reel_format = "text_overlay"
+    else:
+        reel_format = "talking_head"
+
+    # Local import — compose_reel imports from this module at top level,
+    # so importing it back at module top would be circular.
+    from ai_social_content_generator.telegram_bot.actions.compose_reel import (
+        convert_carousel_to_reel,
+    )
+    await convert_carousel_to_reel(update, context, reel_format)
 
 
 def is_empty_attribution(text: str) -> bool:
