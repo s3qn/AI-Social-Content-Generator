@@ -600,7 +600,7 @@ async def viral_view_route(
     keyboard = [[InlineKeyboardButton("➕ Add as topic", callback_data=f"viral_add_{idx}")]]
     if r.get("local_video"):
         keyboard.append([InlineKeyboardButton(
-            "💡 Generate hooks", callback_data=f"viral_hooks_{idx}"
+            "💡 Generate topics with AI", callback_data=f"viral_hooks_{idx}"
         )])
         keyboard.append([InlineKeyboardButton(
             "🎤 Full transcript", callback_data=f"viral_transcript_{idx}"
@@ -789,7 +789,7 @@ async def viral_hooks_route(
             "Viral hooks: Claude failed for idx=%d reply=%r", idx, claude_reply,
         )
         await context.bot.send_message(
-            chat_id=chat_id, text="Couldn't generate hooks, try again.",
+            chat_id=chat_id, text="Couldn't generate topics, try again.",
         )
         return
 
@@ -798,7 +798,7 @@ async def viral_hooks_route(
     if not hooks:
         logger.error("Viral hooks: parsed none for idx=%d raw=%r", idx, raw_output)
         await context.bot.send_message(
-            chat_id=chat_id, text="Couldn't generate hooks, try again.",
+            chat_id=chat_id, text="Couldn't generate topics, try again.",
         )
         return
 
