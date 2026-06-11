@@ -3,17 +3,24 @@ from dotenv import load_dotenv, find_dotenv
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import os
 import json
 import argparse
 import re
+import requests
+
+CACHE_DIR = Path(__file__).resolve().parents[3] / "cache"
+VIRAL_THUMBS_DIR = CACHE_DIR / "viral_thumbs"
+VIRAL_VIDEOS_DIR = CACHE_DIR / "viral_videos"
+VIRAL_MEDIA_TIMEOUT = 30
 
 
 VIRAL_EXCEL_HEADERS = [
     "Tier",
     "Post Date",
     "Username",
+    "Language",
     "Views",
     "Likes",
     "Comments",
@@ -27,6 +34,7 @@ VIRAL_EXCEL_FIELD_MAP = {
     "Tier": "tier",
     "Post Date": "post_date",
     "Username": "username",
+    "Language": "lang",
     "Views": "views",
     "Likes": "likes",
     "Comments": "comments",
@@ -40,6 +48,7 @@ VIRAL_EXCEL_COLUMN_WIDTHS = {
     "Tier": 10,
     "Post Date": 12,
     "Username": 22,
+    "Language": 10,
     "Views": 12,
     "Likes": 10,
     "Comments": 12,
@@ -52,9 +61,12 @@ VIRAL_EXCEL_COLUMN_WIDTHS = {
 
 VIRAL_ACTOR_ID = "patient_discovery/instagram-search-reels"
 VIRAL_PAGES_PER_KEYWORD = 2
-VIRAL_RECENT_DAYS = 30
-VIRAL_TOP_EVER = 3
-VIRAL_TOP_RECENT = 2
+VIRAL_TOP_BIGGEST = 3
+VIRAL_TOP_RESONANT = 2
+# Floor for the resonant tier: a 40-view post with 3 comments has a huge
+# ratio but is noise, not resonance (the old ratio-only ranking's failure
+# mode). Starting constant — tune after eyeballing a real report.
+VIRAL_RESONANT_MIN_VIEWS = 1000
 
 
 def load_apify_api_key():
@@ -203,9 +215,13 @@ def dedup_viral_posts(posts: list[dict]) -> list[dict]:
     return out
 
 
+def viral_views(post: dict) -> int:
+    return post.get("ig_play_count") or post.get("play_count") or 0
+
+
 def compute_viral_engagement_score(post: dict) -> float:
     """(shares + comments) / views. Returns 0 if views missing/zero."""
-    views = post.get("ig_play_count") or post.get("play_count") or 0
+    views = viral_views(post)
     if views <= 0:
         return 0.0
     shares = post.get("share_count") or 0
@@ -213,41 +229,115 @@ def compute_viral_engagement_score(post: dict) -> float:
     return (shares + comments) / views
 
 
-def is_recent_viral_post(post: dict, days: int = VIRAL_RECENT_DAYS) -> bool:
-    """True if post.taken_at (Unix ts) is within the last N days."""
-    taken_at = post.get("taken_at")
-    if not taken_at:
-        return False
-    try:
-        post_date = datetime.fromtimestamp(taken_at, tz=timezone.utc)
-    except (TypeError, ValueError, OSError):
-        return False
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    return post_date >= cutoff
-
-
 def tier_and_rank_viral(posts: list[dict]) -> list[dict]:
-    """Top 3 by score (all-time) + top 2 by score (last 30 days), no
-    overlap between tiers. Tags each post with `_viral_tier`."""
+    """Two tiers per keyword, no overlap:
+    🏆 biggest:  top VIRAL_TOP_BIGGEST by raw views (what blew up).
+    💬 resonant: from the REMAINING posts, top VIRAL_TOP_RESONANT by
+       engagement ratio, with a minimum-views floor (what resonates).
+    Ranking is purely by these metrics — language is display-only
+    downstream, never a sort key or filter (ideas translate; best
+    content wins regardless of market). Tags each post with
+    `_viral_tier` = "biggest"/"resonant"."""
     if not posts:
         return []
 
-    sorted_all = sorted(posts, key=compute_viral_engagement_score, reverse=True)
-    top_ever = sorted_all[:VIRAL_TOP_EVER]
-    top_ever_codes = {p.get("code") for p in top_ever}
+    by_views = sorted(posts, key=viral_views, reverse=True)
+    biggest = by_views[:VIRAL_TOP_BIGGEST]
+    biggest_codes = {p.get("code") for p in biggest}
 
-    remaining_recent = [
-        p for p in sorted_all
-        if p.get("code") not in top_ever_codes and is_recent_viral_post(p)
+    candidates = [
+        p for p in posts
+        if p.get("code") not in biggest_codes
+        and viral_views(p) >= VIRAL_RESONANT_MIN_VIEWS
     ]
-    top_recent = remaining_recent[:VIRAL_TOP_RECENT]
+    resonant = sorted(
+        candidates, key=compute_viral_engagement_score, reverse=True
+    )[:VIRAL_TOP_RESONANT]
 
-    for p in top_ever:
-        p["_viral_tier"] = "ever"
-    for p in top_recent:
-        p["_viral_tier"] = "recent"
+    for p in biggest:
+        p["_viral_tier"] = "biggest"
+    for p in resonant:
+        p["_viral_tier"] = "resonant"
 
-    return top_ever + top_recent
+    return biggest + resonant
+
+
+def viral_post_key(post: dict) -> str:
+    """Stable filename key for a post's downloaded media. `pk` is None
+    in real actor output; `id` is the reliable field, `code` the last
+    resort."""
+    return str(post.get("pk") or post.get("id") or post.get("code") or "")
+
+
+def viral_thumb_path(post_key: str) -> Path:
+    return VIRAL_THUMBS_DIR / f"{post_key}.jpg"
+
+
+def viral_video_path(post_key: str) -> Path:
+    return VIRAL_VIDEOS_DIR / f"{post_key}.mp4"
+
+
+def _download_file(url: str, dest: Path) -> bool:
+    """Best-effort download. Returns True on success, never raises."""
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        resp = requests.get(url, timeout=VIRAL_MEDIA_TIMEOUT)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+        return True
+    except Exception as e:
+        print(f"viral media download failed ({dest.name}): {e}")
+        if dest.exists():
+            dest.unlink()
+        return False
+
+
+def download_viral_media(top_posts: list[dict]) -> None:
+    """Fetch media for the tiered posts AT SCRAPE TIME, while the CDN
+    URLs are minutes old (they 403 within hours — an on-demand download
+    later is impossible). Thumbnails for ALL top posts; videos only for
+    Biggest-tier posts with original audio (licensed music = lyrics
+    junk, not worth transcribing). Per-file failures log and skip —
+    never fail the pipeline. Skips files already on disk (cache hits)."""
+    for post in top_posts:
+        key = viral_post_key(post)
+        if not key:
+            continue
+
+        thumb_url = post.get("thumbnail_url")
+        thumb_dest = viral_thumb_path(key)
+        if thumb_url and not thumb_dest.exists():
+            _download_file(thumb_url, thumb_dest)
+
+        audio_type = (post.get("clips_metadata") or {}).get("audio_type") or ""
+        if post.get("_viral_tier") == "biggest" and audio_type == "original_sounds":
+            video_url = post.get("video_url")
+            video_dest = viral_video_path(key)
+            if video_url and not video_dest.exists():
+                _download_file(video_url, video_dest)
+
+
+def update_cached_transcript(keyword: str, post_key: str, transcript: str) -> None:
+    """Write a lazily-made transcript back into the keyword's cached
+    viral JSON (atomic replace) so future reports reuse it instead of
+    re-running Whisper."""
+    cache_path = viral_cache_path(keyword)
+    if not cache_path.exists():
+        return
+    try:
+        posts = json.loads(cache_path.read_text(encoding="utf-8"))
+        changed = False
+        for p in posts:
+            if viral_post_key(p) == post_key:
+                p["transcript"] = transcript
+                changed = True
+        if not changed:
+            return
+        tmp = cache_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(posts, indent=2, default=str), encoding="utf-8")
+        tmp.replace(cache_path)
+    except Exception as e:
+        print(f"transcript write-back failed for keyword={keyword!r}: {e}")
 
 
 def extract_viral_summary(post: dict, keyword: str) -> dict:
@@ -274,6 +364,10 @@ def extract_viral_summary(post: dict, keyword: str) -> dict:
     else:
         post_date = "unknown"
 
+    post_key = viral_post_key(post)
+    thumb = viral_thumb_path(post_key)
+    video = viral_video_path(post_key)
+
     return {
         "caption": caption_text,
         "likes": post.get("like_count") or 0,
@@ -285,7 +379,20 @@ def extract_viral_summary(post: dict, keyword: str) -> dict:
         "post_date": post_date,
         "keyword_source": keyword,
         "engagement_score": compute_viral_engagement_score(post),
-        "tier": post.get("_viral_tier", "ever"),
+        "tier": post.get("_viral_tier", "biggest"),
+        # Display-only context — never used for ranking or filtering.
+        "lang": post.get("original_lang_for_translations") or "",
+        "thumbnail_url": post.get("thumbnail_url") or "",
+        # Whisper-evidence rider: logged at import time so the parked
+        # video-analysis decision has data on this niche's audio mix.
+        "audio_type": (post.get("clips_metadata") or {}).get("audio_type") or "",
+        "pk": post_key,
+        # Local media downloaded at scrape time (CDN URLs die in hours).
+        # Cards must read these, never the CDN URLs.
+        "local_thumb": str(thumb) if thumb.exists() else "",
+        "local_video": str(video) if video.exists() else "",
+        # Filled lazily on the first 💡/🎤 tap, then cached in the JSON.
+        "transcript": post.get("transcript") or "",
     }
 
 
@@ -300,15 +407,34 @@ def scrape_and_process_viral_keywords(
         raw = get_viral_reels(kw, force_refresh=force_refresh)
         deduped = dedup_viral_posts(raw)
         tiered = tier_and_rank_viral(deduped)
+        download_viral_media(tiered)
         for post in tiered:
             all_results.append(extract_viral_summary(post, kw))
         print(f"keyword={kw!r}: {len(raw)} raw → {len(deduped)} deduped → {len(tiered)} kept")
     return all_results
 
 
+def _delete_media_for_cache_file(path: Path) -> None:
+    """Remove the downloaded thumbs/videos belonging to one cached viral
+    JSON (walks its post keys before the JSON itself is deleted). Keeps
+    cache/viral_videos from growing forever."""
+    try:
+        posts = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    for p in posts:
+        key = viral_post_key(p)
+        if not key:
+            continue
+        for media in (viral_thumb_path(key), viral_video_path(key)):
+            if media.exists():
+                media.unlink()
+
+
 def invalidate_viral_cache(keyword: str | None = None) -> int:
-    """Delete cached viral results. If keyword is None, delete all
-    viral_*.json. Returns count of files deleted."""
+    """Delete cached viral results AND their downloaded media. If
+    keyword is None, delete all viral_*.json. Returns count of cache
+    files deleted."""
     cache_dir = Path(__file__).resolve().parents[3] / "cache"
     if not cache_dir.exists():
         return 0
@@ -316,12 +442,14 @@ def invalidate_viral_cache(keyword: str | None = None) -> int:
     if keyword is not None:
         path = viral_cache_path(keyword)
         if path.exists():
+            _delete_media_for_cache_file(path)
             path.unlink()
             return 1
         return 0
 
     count = 0
     for p in cache_dir.glob("viral_*.json"):
+        _delete_media_for_cache_file(p)
         p.unlink()
         count += 1
     return count
@@ -334,19 +462,20 @@ def _sanitize_sheet_name(keyword: str) -> str:
     return safe[:31] if safe else "Sheet"
 
 
-def viral_excel_path(handle: str) -> Path:
+def viral_excel_path(user_id: int | str) -> Path:
     """Standard location for the viral Excel report. Overwritten each
-    generation. handle is used to namespace multiple users."""
-    return Path(__file__).resolve().parents[3] / "cache" / f"viral_report_{handle}.xlsx"
+    generation. Keyed by user_id, NOT handle: two users can manage the
+    same IG account (same collision class as the bg/logo fix)."""
+    return Path(__file__).resolve().parents[3] / "cache" / f"viral_report_{user_id}.xlsx"
 
 
 def build_viral_excel(results: list[dict], output_path: Path) -> Path:
     """Build .xlsx file. One sheet per keyword. Returns the output path.
 
-    Within each sheet, posts are sorted: tier 'ever' first, then by
-    engagement_score descending. Header row is frozen. If results is
-    empty, a single 'No Data' sheet is created so the user gets a file
-    back either way.
+    Within each sheet: 'biggest' tier first (views descending), then
+    'resonant' (engagement_score descending). Header row is frozen. If
+    results is empty, a single 'No Data' sheet is created so the user
+    gets a file back either way.
     """
     wb = Workbook()
     default_sheet = wb.active
@@ -385,8 +514,9 @@ def build_viral_excel(results: list[dict], output_path: Path) -> Path:
         sorted_rows = sorted(
             rows,
             key=lambda r: (
-                0 if r.get("tier") == "ever" else 1,
-                -r.get("engagement_score", 0),
+                (0, -(r.get("views") or 0))
+                if r.get("tier") == "biggest"
+                else (1, -(r.get("engagement_score") or 0))
             ),
         )
 

@@ -1,5 +1,8 @@
 import asyncio
+import json
 import logging
+import re
+from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -7,19 +10,87 @@ from telegram.ext import ContextTypes
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import (
     MAX_VIRAL_KEYWORDS,
+    add_topic,
     add_viral_keyword,
     load_user,
     remove_viral_keyword,
     save_user,
 )
+from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.ingestion.instagram_scraper import (
     build_viral_excel,
     invalidate_viral_cache,
     scrape_and_process_viral_keywords,
+    update_cached_transcript,
     viral_excel_path,
 )
+from ai_social_content_generator.ingestion.transcribe import transcribe_local
 
 logger = logging.getLogger(__name__)
+
+HOOKS_SKILL_PATH = Path("src/ai_social_content_generator/viral_hooks/SKILL.md")
+
+# Vault topics are 3-200 chars (same floor/cap as the own-idea flow).
+VIRAL_TOPIC_MIN_LEN = 3
+VIRAL_TOPIC_MAX_LEN = 200
+CARD_CAPTION_EXCERPT = 150
+
+TIER_LABELS = {"biggest": "🏆 Biggest", "resonant": "💬 Resonant"}
+
+
+def _fmt_views(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
+def _digest_line(rank: int, r: dict) -> str:
+    """One-liner for the per-keyword digest: rank, tier emoji, headline
+    metric (views for biggest, engagement for resonant), author, lang."""
+    tier_emoji = "🏆" if r.get("tier") == "biggest" else "💬"
+    if r.get("tier") == "resonant":
+        metric = f"{(r.get('engagement_score') or 0) * 100:.1f}% eng"
+    else:
+        metric = f"{_fmt_views(r.get('likes') or 0)} ❤"
+    username = (r.get("username") or "unknown")[:25]
+    parts = [
+        f"{rank}. {tier_emoji} {_fmt_views(r.get('views') or 0)} views",
+        metric,
+        f"@{username}",
+    ]
+    if r.get("lang"):
+        parts.append(r["lang"])
+    return " · ".join(parts)
+
+
+def _format_viral_card(r: dict) -> str:
+    """Full card text for one reel: tier, stats, language (display-only
+    context — ranking is purely by the tier metrics), author, excerpt,
+    link. Stays well under Telegram's 1024-char photo-caption cap."""
+    tier = TIER_LABELS.get(r.get("tier", ""), r.get("tier", ""))
+    parts = [
+        tier,
+        f"{_fmt_views(r.get('views') or 0)} views",
+        f"{(r.get('comments') or 0):,} comments",
+    ]
+    if r.get("lang"):
+        parts.append(r["lang"])
+    excerpt = (r.get("caption") or "").strip().replace("\n", " ")
+    if len(excerpt) > CARD_CAPTION_EXCERPT:
+        excerpt = excerpt[:CARD_CAPTION_EXCERPT] + "..."
+    lines = [
+        " | ".join(parts),
+        f"@{r.get('username', 'unknown')} · {r.get('post_date', 'unknown')}",
+    ]
+    if excerpt:
+        lines.append(f'"{excerpt}"')
+    if r.get("post_url"):
+        lines.append(r["post_url"])
+    if not r.get("local_video"):
+        lines.append("🎵 No speech audio (music reel) — no transcript/hooks.")
+    return "\n".join(lines)
 
 
 @require_auth
@@ -229,11 +300,14 @@ async def viral_refresh_cache(
 async def viral_generate_report(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
+    """Runs the pipeline, then sends in-chat import cards per top reel.
+    Excel is no longer the primary output — it's built on demand via the
+    Get Excel button."""
     query = update.callback_query
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     user_data = load_user(user_id)
     keywords = user_data.get("viral_keywords", []) if user_data else []
-    handle = (user_data.get("handle") if user_data else None) or str(user_id)
 
     if not keywords:
         await query.edit_message_text("No keywords yet. Add some first.")
@@ -254,41 +328,522 @@ async def viral_generate_report(
     except Exception:
         logger.exception("Viral pipeline failed for keywords=%r", kw_texts)
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             text="Scraping failed. Try again or check logs.",
         )
         return
 
-    output_path = viral_excel_path(handle)
+    if not results:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="No viral posts found. Try different keywords.",
+        )
+        return
+
+    # Session-only stash; the digest/card buttons index into it.
+    context.user_data["viral_results"] = results
+
+    # ONE compact digest message per keyword (not one photo per post —
+    # that was ~15 messages of chat spam). Numbers drill into full cards,
+    # same pattern as the topic/headline pickers.
+    grouped: dict[str, list[tuple[int, dict]]] = {}
+    for idx, r in enumerate(results):
+        grouped.setdefault(r.get("keyword_source", "unknown"), []).append((idx, r))
+
+    for kw, entries in grouped.items():
+        lines = [f"🔥 {kw}"]
+        buttons = []
+        for rank, (idx, r) in enumerate(entries, start=1):
+            lines.append(_digest_line(rank, r))
+            buttons.append(
+                InlineKeyboardButton(str(rank), callback_data=f"viral_view_{idx}")
+            )
+        text = "\n".join(lines)
+        if len(text) > 4000:  # Telegram cap 4096; defensive
+            text = text[:4000] + "..."
+        keyboard = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    summary_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Get Excel", callback_data="viral_excel")],
+        [InlineKeyboardButton("← Back", callback_data="viral_back")],
+    ])
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✅ {len(results)} posts across {len(kw_texts)} keyword{plural}.\n"
+            f"Tap a number for the full post, transcript, and hook ideas."
+        ),
+        reply_markup=summary_markup,
+    )
+    logger.info(
+        "Sent viral digest for user_id=%s with %d results", user_id, len(results),
+    )
+
+
+@require_auth
+async def viral_excel_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Builds and sends the Excel workbook on demand from the stashed
+    results."""
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    results = context.user_data.get("viral_results")
+    if not results:
+        await context.bot.send_message(
+            chat_id=chat_id, text="Report expired — generate again.",
+        )
+        return
+
+    output_path = viral_excel_path(user_id)
     try:
         await asyncio.to_thread(build_viral_excel, results, output_path)
     except Exception:
-        logger.exception("Viral Excel build failed for handle=%s", handle)
+        logger.exception("Viral Excel build failed for user_id=%s", user_id)
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Failed to build Excel file. Try again.",
+            chat_id=chat_id, text="Failed to build Excel file. Try again.",
         )
         return
 
     try:
         with open(output_path, "rb") as f:
             await context.bot.send_document(
-                chat_id=update.effective_chat.id,
+                chat_id=chat_id,
                 document=f,
                 filename="viral_report.xlsx",
                 caption=(
-                    f"✅ Viral report\n"
-                    f"📊 {len(results)} posts across {len(kw_texts)} keyword{plural}\n"
-                    f"🏆 Top by all-time + 🆕 last 30d per keyword"
+                    f"📊 {len(results)} posts\n"
+                    f"🏆 Biggest (raw views) + 💬 Resonant (engagement ratio)"
                 ),
             )
         logger.info(
-            "Sent viral Excel for handle=%s with %d results",
-            handle, len(results),
+            "Sent viral Excel for user_id=%s with %d results",
+            user_id, len(results),
         )
     except Exception:
-        logger.exception("Telegram document send failed for handle=%s", handle)
+        logger.exception("Telegram document send failed for user_id=%s", user_id)
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Excel built but failed to send. Try again.",
+            chat_id=chat_id, text="Excel built but failed to send. Try again.",
         )
+
+
+async def _show_import_prompt(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str
+) -> None:
+    """Edit-before-save entry, shared by caption imports and hook
+    imports: stash the candidate TEXT in pending_viral_import, show it
+    in a copyable block, and offer Keep as-is when it fits the topic
+    limits. The normal_message branch + _store_viral_topic do the rest."""
+    context.user_data["pending_viral_import"] = {"text": text}
+
+    if text:
+        # Local import — _escape_codeblock lives in compose_carousel, which
+        # pulls heavy modules; only needed here.
+        from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+            _escape_codeblock,
+        )
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"```\n{_escape_codeblock(text)}\n```",
+            parse_mode="MarkdownV2",
+        )
+
+    if VIRAL_TOPIC_MIN_LEN <= len(text) <= VIRAL_TOPIC_MAX_LEN:
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💾 Keep as-is", callback_data="viral_keep_asis")
+        ]])
+        prompt = "Send the topic as you want it stored, or keep this text as-is:"
+    else:
+        # Hashtag-soup captions >200 chars (or empty) can't go in the
+        # vault verbatim — require an edited version for a clean vault.
+        markup = None
+        prompt = (
+            f"This text is {len(text)} characters "
+            f"(topics are {VIRAL_TOPIC_MIN_LEN}-{VIRAL_TOPIC_MAX_LEN}). "
+            f"Send the topic as you want it stored:"
+        )
+    await context.bot.send_message(chat_id=chat_id, text=prompt, reply_markup=markup)
+
+
+@require_auth
+async def viral_add_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """➕ Add as topic: the post's caption goes through edit-before-save."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    try:
+        idx = int(query.data.removeprefix("viral_add_"))
+    except ValueError:
+        logger.error("viral_add_route: bad callback_data=%r", query.data)
+        return
+
+    results = context.user_data.get("viral_results")
+    if not results or idx < 0 or idx >= len(results):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Report expired — generate again.",
+        )
+        return
+
+    r = results[idx]
+
+    # Whisper-evidence rider: original_sounds ≈ talking-head, licensed
+    # music ≈ overlay. Gathers data for the parked video-analysis decision.
+    logger.info(
+        "viral import: tier=%s lang=%s audio_type=%s url=%s",
+        r.get("tier"), r.get("lang"), r.get("audio_type"), r.get("post_url"),
+    )
+
+    await _show_import_prompt(context, chat_id, (r.get("caption") or "").strip())
+
+
+@require_auth
+async def viral_keep_asis_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    pending = context.user_data.get("pending_viral_import")
+    text = (pending or {}).get("text", "") if isinstance(pending, dict) else ""
+    if not text:
+        context.user_data.pop("pending_viral_import", None)
+        await context.bot.send_message(
+            chat_id=chat_id, text="Nothing pending — tap ➕ Add as topic again.",
+        )
+        return
+
+    if not (VIRAL_TOPIC_MIN_LEN <= len(text) <= VIRAL_TOPIC_MAX_LEN):
+        # Defensive: the Keep button is hidden in this case, but a stale
+        # button from an earlier report could still land here.
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"This text doesn't fit the topic limits "
+                f"({VIRAL_TOPIC_MIN_LEN}-{VIRAL_TOPIC_MAX_LEN} characters). "
+                f"Send an edited version:"
+            ),
+        )
+        return
+
+    await _store_viral_topic(update, context, text)
+
+
+async def _store_viral_topic(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> None:
+    """Shared tail for Keep-as-is (callback) and the edited-text capture
+    (plain message) — no callback_query assumed, same duality as
+    _use_headline."""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    user_data = load_user(user_id)
+    if user_data is None:
+        context.user_data.pop("pending_viral_import", None)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="No account info. Please complete onboarding first.",
+        )
+        return
+
+    add_topic(user_data, text)
+    save_user(user_id, user_data)
+    context.user_data.pop("pending_viral_import", None)
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"💾 Added to your topics: '{text}'\n"
+            f"It's available in the Carousel/Reel pickers."
+        ),
+    )
+
+
+@require_auth
+async def viral_view_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Digest number tap → full card for one post, with the local
+    thumbnail (CDN URLs are dead by now) and the action buttons."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    try:
+        idx = int(query.data.removeprefix("viral_view_"))
+    except ValueError:
+        logger.error("viral_view_route: bad callback_data=%r", query.data)
+        return
+
+    results = context.user_data.get("viral_results")
+    if not results or idx < 0 or idx >= len(results):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Report expired — generate again.",
+        )
+        return
+
+    r = results[idx]
+    card = _format_viral_card(r)
+
+    keyboard = [[InlineKeyboardButton("➕ Add as topic", callback_data=f"viral_add_{idx}")]]
+    if r.get("local_video"):
+        keyboard.append([InlineKeyboardButton(
+            "💡 Generate hooks", callback_data=f"viral_hooks_{idx}"
+        )])
+        keyboard.append([InlineKeyboardButton(
+            "🎤 Full transcript", callback_data=f"viral_transcript_{idx}"
+        )])
+    markup = InlineKeyboardMarkup(keyboard)
+
+    sent = False
+    local_thumb = r.get("local_thumb")
+    if local_thumb and Path(local_thumb).exists():
+        try:
+            with open(local_thumb, "rb") as f:
+                await context.bot.send_photo(
+                    chat_id=chat_id, photo=f, caption=card, reply_markup=markup,
+                )
+            sent = True
+        except Exception:
+            logger.warning(
+                "viral_view: local thumb send failed (idx=%d path=%s), text fallback",
+                idx, local_thumb,
+            )
+    if not sent:
+        await context.bot.send_message(
+            chat_id=chat_id, text=card, reply_markup=markup,
+        )
+
+
+async def _ensure_transcript(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, idx: int
+) -> str | None:
+    """Lazy-transcription gate. Returns the transcript ("" when
+    impossible: no local video, or Whisper failed), or None when a
+    transcription of this post is already in flight (user notified).
+    First successful run is written back to BOTH the stash and the
+    on-disk viral JSON so it never reruns."""
+    chat_id = update.effective_chat.id
+    r = context.user_data["viral_results"][idx]
+
+    if r.get("transcript"):
+        return r["transcript"]
+
+    local_video = r.get("local_video")
+    if not local_video or not Path(local_video).exists():
+        return ""
+
+    # Double-tap guard: a second 💡/🎤 during the ~22s run must not start
+    # a concurrent transcription of the same file.
+    in_flight: set = context.user_data.setdefault("viral_transcribing", set())
+    pk = r.get("pk") or str(idx)
+    if pk in in_flight:
+        await context.bot.send_message(
+            chat_id=chat_id, text="🎤 Already transcribing this reel — hold on...",
+        )
+        return None
+
+    in_flight.add(pk)
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id, text="🎤 Transcribing, ~30 sec...",
+        )
+        # MUST be to_thread: this runs in a callback handler; ~22s of
+        # Whisper CPU on the event loop would freeze the bot for everyone.
+        text = await asyncio.to_thread(transcribe_local, Path(local_video))
+    finally:
+        in_flight.discard(pk)
+
+    if text:
+        r["transcript"] = text
+        await asyncio.to_thread(
+            update_cached_transcript, r.get("keyword_source", ""), pk, text,
+        )
+    return text
+
+
+@require_auth
+async def viral_transcript_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    try:
+        idx = int(query.data.removeprefix("viral_transcript_"))
+    except ValueError:
+        logger.error("viral_transcript_route: bad callback_data=%r", query.data)
+        return
+
+    results = context.user_data.get("viral_results")
+    if not results or idx < 0 or idx >= len(results):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Report expired — generate again.",
+        )
+        return
+
+    transcript = await _ensure_transcript(update, context, idx)
+    if transcript is None:
+        return
+    if not transcript:
+        await context.bot.send_message(
+            chat_id=chat_id, text="No transcript available for this reel.",
+        )
+        return
+
+    from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+        _escape_codeblock,
+    )
+    for i in range(0, len(transcript), 3500):
+        chunk = transcript[i:i + 3500]
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"```\n{_escape_codeblock(chunk)}\n```",
+            parse_mode="MarkdownV2",
+        )
+
+
+@require_auth
+async def viral_hooks_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """💡: transcript (+ caption + niche/voice) → one Claude call →
+    3-5 hooks adapted to the creator, each addable to the vault."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+
+    try:
+        idx = int(query.data.removeprefix("viral_hooks_"))
+    except ValueError:
+        logger.error("viral_hooks_route: bad callback_data=%r", query.data)
+        return
+
+    results = context.user_data.get("viral_results")
+    if not results or idx < 0 or idx >= len(results):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Report expired — generate again.",
+        )
+        return
+
+    user_data = load_user(user_id)
+    if user_data is None or "handle" not in user_data or "niche" not in user_data:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="No account info. Please complete onboarding first.",
+        )
+        return
+
+    handle = user_data["handle"]
+    analysis_path = Path(f"cache/{handle}-analysis.json")
+    if not analysis_path.exists():
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Please run Analyze first before generating hooks.",
+        )
+        return
+
+    r = results[idx]
+    transcript = await _ensure_transcript(update, context, idx)
+    if transcript is None:
+        return
+    # Empty transcript is fine — the SKILL falls back to caption alone.
+
+    await context.bot.send_message(
+        chat_id=chat_id, text="💡 Generating hooks, ~30-60 sec...",
+    )
+
+    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    niche = analysis.get("niche") or user_data.get("niche", "")
+    voice = analysis.get("voice", [])
+    voice_str = ", ".join(voice) if isinstance(voice, list) else str(voice)
+
+    skill_template = HOOKS_SKILL_PATH.read_text(encoding="utf-8")
+    prompt = skill_template.format(
+        transcript=transcript,
+        caption=(r.get("caption") or "").strip()[:1000],
+        niche=niche,
+        voice_str=voice_str,
+    )
+
+    claude_reply = await message_claude(prompt)
+    raw_output = getattr(claude_reply, "stdout", "") or ""
+    returncode = getattr(claude_reply, "returncode", -1)
+
+    if claude_reply is None or returncode != 0 or not raw_output:
+        logger.error(
+            "Viral hooks: Claude failed for idx=%d reply=%r", idx, claude_reply,
+        )
+        await context.bot.send_message(
+            chat_id=chat_id, text="Couldn't generate hooks, try again.",
+        )
+        return
+
+    parsed = re.findall(r"^\s*\d+\.\s*(.+?)\s*$", raw_output, re.MULTILINE)
+    hooks = [h.strip() for h in parsed if h.strip()]
+    if not hooks:
+        logger.error("Viral hooks: parsed none for idx=%d raw=%r", idx, raw_output)
+        await context.bot.send_message(
+            chat_id=chat_id, text="Couldn't generate hooks, try again.",
+        )
+        return
+
+    context.user_data["viral_hooks"] = {"idx": idx, "hooks": hooks}
+
+    lines = [f"{n + 1}. {h}" for n, h in enumerate(hooks)]
+    buttons = [
+        InlineKeyboardButton(str(n + 1), callback_data=f"viral_hookadd_{idx}_{n}")
+        for n in range(len(hooks))
+    ]
+    keyboard = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="💡 Hooks from this reel (tap a number to add as topic):\n\n"
+             + "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+@require_auth
+async def viral_hookadd_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Hook number tap → the existing edit-before-save flow, with the
+    hook text as the candidate."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    m = re.match(r"^viral_hookadd_(\d+)_(\d+)$", query.data)
+    if not m:
+        logger.error("viral_hookadd_route: bad callback_data=%r", query.data)
+        return
+    idx, n = int(m.group(1)), int(m.group(2))
+
+    stash = context.user_data.get("viral_hooks")
+    if (
+        not stash
+        or stash.get("idx") != idx
+        or n < 0
+        or n >= len(stash.get("hooks", []))
+    ):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Hooks expired — tap 💡 Generate hooks again.",
+        )
+        return
+
+    await _show_import_prompt(context, chat_id, stash["hooks"][n])

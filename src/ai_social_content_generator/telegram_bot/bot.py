@@ -24,6 +24,13 @@ from ai_social_content_generator.telegram_bot.actions.viral_posts import (
     viral_submenu_route,
     viral_remove_route,
     viral_back_submenu_route,
+    viral_add_route,
+    viral_keep_asis_route,
+    viral_excel_route,
+    viral_view_route,
+    viral_transcript_route,
+    viral_hooks_route,
+    viral_hookadd_route,
 )
 from ai_social_content_generator.telegram_bot.actions.settings import (
     settings_submenu_route,
@@ -190,6 +197,27 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(viral_back_submenu_route, pattern=r"^viral_back_submenu$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_add_route, pattern=r"^viral_add_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_keep_asis_route, pattern=r"^viral_keep_asis$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_excel_route, pattern=r"^viral_excel$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_view_route, pattern=r"^viral_view_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_transcript_route, pattern=r"^viral_transcript_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_hooks_route, pattern=r"^viral_hooks_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_hookadd_route, pattern=r"^viral_hookadd_\d+_\d+$")
     )
     application.add_handler(
         CallbackQueryHandler(

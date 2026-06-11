@@ -82,5 +82,19 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _use_headline(update, context, headline)
         return
 
+    if context.user_data.get("pending_viral_import") is not None:
+        text = (update.message.text or "").strip()
+        if not (3 <= len(text) <= 200):
+            # Keep the flag set so the user can try again.
+            await update.message.reply_text(
+                "Send a topic between 3 and 200 characters."
+            )
+            return
+        from ai_social_content_generator.telegram_bot.actions.viral_posts import (
+            _store_viral_topic,
+        )
+        await _store_viral_topic(update, context, text)
+        return
+
     await menu_popup(update, context)
 
