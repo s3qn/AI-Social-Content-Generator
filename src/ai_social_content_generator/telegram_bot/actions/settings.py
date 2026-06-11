@@ -321,7 +321,9 @@ async def receive_background_photo(
 
     photo = update.message.photo[-1]  # largest size
     tg_file = await photo.get_file()
-    dest = Path("cache") / f"{handle}-bg.jpg"
+    # Keyed by user_id, NOT handle: two users can manage the same IG account
+    # (preference files are per-person; scrape caches stay per-handle deliberately).
+    dest = Path("cache") / f"{user_id}-bg.jpg"
     dest.parent.mkdir(parents=True, exist_ok=True)
     await tg_file.download_to_drive(custom_path=str(dest))
 
@@ -401,7 +403,9 @@ async def receive_logo_document(
         return
 
     tg_file = await doc.get_file()
-    dest = Path("cache") / f"{handle}-logo.png"
+    # Keyed by user_id, NOT handle: two users can manage the same IG account
+    # (preference files are per-person; scrape caches stay per-handle deliberately).
+    dest = Path("cache") / f"{user_id}-logo.png"
     dest.parent.mkdir(parents=True, exist_ok=True)
     await tg_file.download_to_drive(custom_path=str(dest))
 
