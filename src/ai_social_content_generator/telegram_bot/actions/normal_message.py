@@ -96,5 +96,19 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _store_viral_topic(update, context, text)
         return
 
+    if context.user_data.get("awaiting_format_name"):
+        from ai_social_content_generator.telegram_bot.actions.reel_formats_ui import (
+            format_name_receive,
+        )
+        await format_name_receive(update, context)
+        return
+
+    if context.user_data.get("awaiting_format_desc"):
+        from ai_social_content_generator.telegram_bot.actions.reel_formats_ui import (
+            format_desc_receive,
+        )
+        await format_desc_receive(update, context)
+        return
+
     await menu_popup(update, context)
 

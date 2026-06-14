@@ -183,6 +183,15 @@ async def convert_carousel_to_reel(
         )
         fmt = get_reel_format(user_id, DEFAULT_REEL_FORMAT)
 
+    if not fmt.get("convert_template_path"):
+        # Custom (compose-only) formats have no convert template. The
+        # convert picker filters them out, but guard against a stale id.
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="This format can't be used for carousel conversion.",
+        )
+        return
+
     format_label = fmt["name"].lower()
     progress = f"🎬 Converting your carousel into a {format_label} reel, ~30-60 sec..."
     if query is not None:

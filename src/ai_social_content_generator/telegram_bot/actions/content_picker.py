@@ -62,6 +62,9 @@ async def reel_format_picker_show(
         )]
         for fmt in formats
     ]
+    keyboard.append(
+        [InlineKeyboardButton("➕ Add format", callback_data="reel_format_add")]
+    )
     keyboard.append([InlineKeyboardButton("← Back", callback_data="ideas_back")])
 
     body = "\n\n".join(

@@ -15,6 +15,12 @@ from ai_social_content_generator.telegram_bot.actions.content_picker import (
     topic_picker_back_route,
     reel_format_picker_route,
 )
+from ai_social_content_generator.telegram_bot.actions.reel_formats_ui import (
+    reel_format_add_start,
+    format_save,
+    format_regen,
+    format_discard,
+)
 from ai_social_content_generator.telegram_bot.actions.competitors import (
     competitor_add_start,
     competitor_receive_handle,
@@ -186,6 +192,20 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(headline_regen_route, pattern=r"^headline_regen$")
+    )
+    # MUST register before the generic reel_format_ picker route below,
+    # else "reel_format_add" is parsed as a (nonexistent) format id.
+    application.add_handler(
+        CallbackQueryHandler(reel_format_add_start, pattern=r"^reel_format_add$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(format_save, pattern=r"^format_save$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(format_regen, pattern=r"^format_regen$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(format_discard, pattern=r"^format_discard$")
     )
     application.add_handler(
         CallbackQueryHandler(reel_format_picker_route, pattern=r"^reel_format_.+$")

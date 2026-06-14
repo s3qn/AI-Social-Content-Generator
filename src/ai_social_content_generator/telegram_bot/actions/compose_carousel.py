@@ -922,7 +922,12 @@ async def carousel_makereel_route(
         return
 
     from ai_social_content_generator.reel_formats import get_reel_formats
-    formats = get_reel_formats(update.effective_user.id)
+    # Convert-from-carousel needs a convert template; custom formats are
+    # compose-only (no convert_template_path), so filter them out here.
+    formats = [
+        f for f in get_reel_formats(update.effective_user.id)
+        if f.get("convert_template_path")
+    ]
     keyboard = [
         [InlineKeyboardButton(
             f"{fmt['emoji']} {fmt['name']}",
