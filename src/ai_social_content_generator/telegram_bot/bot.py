@@ -188,7 +188,7 @@ if __name__ == '__main__':
         CallbackQueryHandler(headline_regen_route, pattern=r"^headline_regen$")
     )
     application.add_handler(
-        CallbackQueryHandler(reel_format_picker_route, pattern="^reel_format_")
+        CallbackQueryHandler(reel_format_picker_route, pattern=r"^reel_format_.+$")
     )
     application.add_handler(
         CallbackQueryHandler(
@@ -298,7 +298,7 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(
-            carousel_makereel_format_route, pattern=r"^convert_reel_(text|talking)$"
+            carousel_makereel_format_route, pattern=r"^convert_reel_.+$"
         )
     )
     # Global photo + document handlers — registered LAST so they don't

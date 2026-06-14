@@ -8,6 +8,10 @@ from ai_social_content_generator.telegram_bot.users import load_user
 from ai_social_content_generator.telegram_bot.actions.content_picker import (
     headline_picker_generate,
 )
+from ai_social_content_generator.reel_formats import (
+    get_reel_format,
+    get_reel_formats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,16 +144,15 @@ async def morning_idea_format_route(
             )
             return
 
-        # Reel: ask format sub-choice (talking head vs text overlay).
+        # Reel: ask format sub-choice. Payload is topic-index-FIRST
+        # (briefreel_<idx>_<format_id>) so the int parses unambiguously and
+        # the id — which may contain underscores — is the remainder.
         keyboard = [
             [InlineKeyboardButton(
-                "🎤 Talking head",
-                callback_data=f"briefreel_talking_{topic_index}",
-            )],
-            [InlineKeyboardButton(
-                "📝 Text overlay",
-                callback_data=f"briefreel_text_{topic_index}",
-            )],
+                f"{fmt['emoji']} {fmt['name']}",
+                callback_data=f"briefreel_{topic_index}_{fmt['id']}",
+            )]
+            for fmt in get_reel_formats(user_id)
         ]
         await query.edit_message_text(
             "Reel format?", reply_markup=InlineKeyboardMarkup(keyboard)
@@ -158,15 +161,18 @@ async def morning_idea_format_route(
 
     if data.startswith("briefreel_"):
         payload = data.removeprefix("briefreel_")
-        topic_index = _parse_index(payload)
-        if topic_index is None:
+        parts = payload.split("_", 1)
+        if len(parts) != 2:
             logger.error("morning_idea_format_route: bad briefreel payload=%r", data)
             return
-        fmt_token = payload.rsplit("_", 1)[0]
-        fmt_map = {"talking": "talking_head", "text": "text_overlay"}
-        reel_format = fmt_map.get(fmt_token)
-        if reel_format is None:
-            logger.error("morning_idea_format_route: bad reel format=%r", fmt_token)
+        try:
+            topic_index = int(parts[0])
+        except ValueError:
+            logger.error("morning_idea_format_route: bad briefreel index=%r", data)
+            return
+        format_id = parts[1]
+        if get_reel_format(user_id, format_id) is None:
+            logger.error("morning_idea_format_route: bad reel format=%r", format_id)
             return
 
         if not _index_valid(user_id, topic_index):
@@ -175,7 +181,7 @@ async def morning_idea_format_route(
             )
             return
 
-        context.user_data["pending_reel_format"] = reel_format
+        context.user_data["pending_reel_format"] = format_id
         await headline_picker_generate(
             update, context, "reel", topic_index
         )

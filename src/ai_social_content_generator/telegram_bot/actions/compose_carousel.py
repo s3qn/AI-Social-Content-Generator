@@ -921,23 +921,21 @@ async def carousel_makereel_route(
         )
         return
 
+    from ai_social_content_generator.reel_formats import get_reel_formats
+    formats = get_reel_formats(update.effective_user.id)
     keyboard = [
         [InlineKeyboardButton(
-            "📝 Text overlay (low effort)", callback_data="convert_reel_text"
-        )],
-        [InlineKeyboardButton(
-            "🎤 Talking head (speak to camera)", callback_data="convert_reel_talking"
-        )],
+            f"{fmt['emoji']} {fmt['name']}",
+            callback_data=f"convert_reel_{fmt['id']}",
+        )]
+        for fmt in formats
     ]
+    body = "\n\n".join(
+        f"{fmt['emoji']} {fmt['name']}: {fmt['description']}" for fmt in formats
+    )
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=(
-            "How do you want this reel to look?\n\n"
-            "📝 Text overlay: viewers READ text over a simple b-roll video. "
-            "No speaking needed. Low effort to shoot.\n\n"
-            "🎤 Talking head: you speak to the camera. More personal but "
-            "more effort."
-        ),
+        text=f"How do you want this reel to look?\n\n{body}",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -949,17 +947,18 @@ async def carousel_makereel_format_route(
     query = update.callback_query
     await query.answer()
 
-    if query.data == "convert_reel_text":
-        reel_format = "text_overlay"
-    else:
-        reel_format = "talking_head"
-
-    # Local import — compose_reel imports from this module at top level,
+    # Local imports — compose_reel imports from this module at top level,
     # so importing it back at module top would be circular.
+    from ai_social_content_generator.reel_formats import get_reel_format
     from ai_social_content_generator.telegram_bot.actions.compose_reel import (
         convert_carousel_to_reel,
     )
-    await convert_carousel_to_reel(update, context, reel_format)
+
+    format_id = query.data.removeprefix("convert_reel_")
+    if get_reel_format(update.effective_user.id, format_id) is None:
+        logger.error("carousel_makereel_format_route: unknown format id=%r", format_id)
+        return
+    await convert_carousel_to_reel(update, context, format_id)
 
 
 def is_empty_attribution(text: str) -> bool:

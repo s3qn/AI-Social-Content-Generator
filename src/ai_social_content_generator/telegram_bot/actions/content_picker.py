@@ -22,6 +22,10 @@ from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
 from ai_social_content_generator.telegram_bot.actions.compose_reel import (
     compose_reel_from_picked,
 )
+from ai_social_content_generator.reel_formats import (
+    get_reel_format,
+    get_reel_formats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,27 +52,22 @@ async def reel_format_picker_show(
     if query is None:
         return
     await query.answer()
+    user_id = update.effective_user.id
 
+    formats = get_reel_formats(user_id)
     keyboard = [
         [InlineKeyboardButton(
-            "📝 Text overlay (low effort, viral format)",
-            callback_data="reel_format_text_overlay",
-        )],
-        [InlineKeyboardButton(
-            "🎤 Talking head (speak to camera)",
-            callback_data="reel_format_talking_head",
-        )],
-        [InlineKeyboardButton("← Back", callback_data="ideas_back")],
+            f"{fmt['emoji']} {fmt['name']}",
+            callback_data=f"reel_format_{fmt['id']}",
+        )]
+        for fmt in formats
     ]
+    keyboard.append([InlineKeyboardButton("← Back", callback_data="ideas_back")])
 
-    text = (
-        "How do you want this reel to look?\n\n"
-        "📝 Text overlay: viewers READ text over a simple b-roll video. "
-        "No speaking needed. Low effort to shoot. "
-        "(Format that went viral on your account.)\n\n"
-        "🎤 Talking head: you speak to the camera. More personal but "
-        "more effort."
+    body = "\n\n".join(
+        f"{fmt['emoji']} {fmt['name']}: {fmt['description']}" for fmt in formats
     )
+    text = f"How do you want this reel to look?\n\n{body}"
 
     await query.edit_message_text(
         text,
@@ -82,13 +81,14 @@ async def reel_format_picker_route(
 ) -> None:
     query = update.callback_query
     await query.answer()
+    user_id = update.effective_user.id
 
-    if query.data == "reel_format_text_overlay":
-        context.user_data["pending_reel_format"] = "text_overlay"
-        await content_picker_entry(update, context, "reel")
-    elif query.data == "reel_format_talking_head":
-        context.user_data["pending_reel_format"] = "talking_head"
-        await content_picker_entry(update, context, "reel")
+    format_id = query.data.removeprefix("reel_format_")
+    if get_reel_format(user_id, format_id) is None:
+        logger.error("reel_format_picker_route: unknown format id=%r", format_id)
+        return
+    context.user_data["pending_reel_format"] = format_id
+    await content_picker_entry(update, context, "reel")
 
 
 async def content_picker_entry(

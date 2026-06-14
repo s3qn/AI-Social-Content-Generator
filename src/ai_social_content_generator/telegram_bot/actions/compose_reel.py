@@ -15,21 +15,14 @@ from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     build_competitor_section,
     is_empty_attribution,
 )
+from ai_social_content_generator.reel_formats import (
+    get_reel_format,
+    load_format_template,
+)
 
 logger = logging.getLogger(__name__)
 
-SKILL_PATH_TALKING_HEAD = Path(
-    "src/ai_social_content_generator/compose_reel/SKILL.md"
-)
-SKILL_PATH_TEXT_OVERLAY = Path(
-    "src/ai_social_content_generator/compose_reel_text_overlay/SKILL.md"
-)
-CONVERT_PATH_TALKING_HEAD = Path(
-    "src/ai_social_content_generator/convert_carousel_reel/SKILL.md"
-)
-CONVERT_PATH_TEXT_OVERLAY = Path(
-    "src/ai_social_content_generator/convert_carousel_reel_text_overlay/SKILL.md"
-)
+DEFAULT_REEL_FORMAT = "talking_head"
 
 
 def _strip_asterisks(text: str) -> str:
@@ -89,11 +82,14 @@ async def compose_reel_from_picked(
     competitors = user_data.get("competitors", [])
     competitor_section = build_competitor_section(competitors)
 
-    if reel_format == "text_overlay":
-        skill_path = SKILL_PATH_TEXT_OVERLAY
-    else:
-        skill_path = SKILL_PATH_TALKING_HEAD
-    skill_template = skill_path.read_text(encoding="utf-8")
+    fmt = get_reel_format(user_id, reel_format)
+    if fmt is None:
+        logger.warning(
+            "compose_reel: unknown reel_format=%r, falling back to %s",
+            reel_format, DEFAULT_REEL_FORMAT,
+        )
+        fmt = get_reel_format(user_id, DEFAULT_REEL_FORMAT)
+    skill_template = load_format_template(fmt)
     prompt = skill_template.format(
         niche=niche,
         voice_str=voice_str,
@@ -179,7 +175,15 @@ async def convert_carousel_to_reel(
         )
         return
 
-    format_label = "text overlay" if reel_format == "text_overlay" else "talking head"
+    fmt = get_reel_format(user_id, reel_format)
+    if fmt is None:
+        logger.warning(
+            "convert_carousel_to_reel: unknown reel_format=%r, falling back to %s",
+            reel_format, DEFAULT_REEL_FORMAT,
+        )
+        fmt = get_reel_format(user_id, DEFAULT_REEL_FORMAT)
+
+    format_label = fmt["name"].lower()
     progress = f"🎬 Converting your carousel into a {format_label} reel, ~30-60 sec..."
     if query is not None:
         await query.edit_message_text(progress)
@@ -227,11 +231,7 @@ async def convert_carousel_to_reel(
     competitors = user_data.get("competitors", [])
     competitor_section = build_competitor_section(competitors)
 
-    if reel_format == "text_overlay":
-        skill_path = CONVERT_PATH_TEXT_OVERLAY
-    else:
-        skill_path = CONVERT_PATH_TALKING_HEAD
-    skill_template = skill_path.read_text(encoding="utf-8")
+    skill_template = load_format_template(fmt, convert=True)
     prompt = skill_template.format(
         niche=niche,
         voice_str=voice_str,
