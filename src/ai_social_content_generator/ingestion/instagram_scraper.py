@@ -392,7 +392,10 @@ def extract_viral_summary(post: dict, keyword: str) -> dict:
         "local_thumb": str(thumb) if thumb.exists() else "",
         "local_video": str(video) if video.exists() else "",
         # Filled lazily on the first 💡/🎤 tap, then cached in the JSON.
+        # May be a plain string (old) or {"text","segments"} (new).
         "transcript": post.get("transcript") or "",
+        # Reel length (seconds) for Phase 3 pacing analysis.
+        "video_duration": post.get("video_duration") or 0,
     }
 
 

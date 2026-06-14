@@ -25,12 +25,29 @@ _EXECUTION_PRIMING = (
 )
 
 
-async def message_claude(prompt, timeout=300):
-    process = await asyncio.create_subprocess_exec(
+async def message_claude(prompt, timeout=300, image_dir: str | None = None):
+    """Run the Claude CLI on a prompt over stdin. When image_dir is set,
+    grant the CLI read access to that directory so the prompt can
+    reference local frame files (vision). The text path (image_dir None)
+    is byte-identical to before."""
+    args = [
         "claude",
         "--print",
         "--append-system-prompt",
         _EXECUTION_PRIMING,
+    ]
+    if image_dir:
+        # Verified on the VPS: this exact flag combo lets --print read
+        # local images without stalling on the file-permission gate and
+        # without an API key.
+        args += [
+            "--add-dir", image_dir,
+            "--permission-mode", "dontAsk",
+            "--allowedTools", "Read",
+        ]
+
+    process = await asyncio.create_subprocess_exec(
+        *args,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

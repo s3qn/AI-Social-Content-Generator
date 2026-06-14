@@ -1,5 +1,9 @@
 ## Create Reel Format Template Prompt
 
+DRIFT WARNING: create_reel_format_from_reel/SKILL.md is a clone of this
+file with a real reel as input. The PLACEHOLDER CONTRACT, HOUSE RULES, and
+OUTPUT rules are shared — if you change them here, mirror the change there.
+
 You are building a REUSABLE TEMPLATE for an Instagram reel format, based
 on a content creator's description of the format they want. Your output
 is NOT a reel. Your output is a PROMPT TEMPLATE (a .md file) that will

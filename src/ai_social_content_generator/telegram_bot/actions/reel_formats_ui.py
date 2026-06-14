@@ -186,13 +186,45 @@ async def format_desc_receive(
     await _generate_and_preview_format(update, context)
 
 
-async def _generate_and_preview_format(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+INSUFFICIENT_SIGNAL = "INSUFFICIENT_SIGNAL"
+
+
+async def _typed_generate(name: str, desc: str):
+    """Generator for the typed-description origin. Returns
+    (status, template): status in {"ok","fail"}."""
+    cand = await _generate_template(name, desc)
+    return ("fail", None) if cand is None else ("ok", cand)
+
+
+async def _reel_generate(prompt: str, image_dir: str):
+    """Generator for the reel (vision) origin. Returns (status, template):
+    status in {"ok","insufficient","fail"}."""
+    reply = await message_claude(prompt, image_dir=image_dir)
+    raw = getattr(reply, "stdout", None)
+    rc = getattr(reply, "returncode", -1)
+    if reply is None or rc != 0 or not raw:
+        return "fail", None
+    cand = _strip_template_fences(raw)
+    if cand.strip() == INSUFFICIENT_SIGNAL:
+        return "insufficient", None
+    return "ok", cand
+
+
+def _make_generator(pending: dict):
+    """Reconstruct the right generator from a pending_format's origin —
+    used by both the initial build and Regenerate."""
+    if pending.get("origin") == "reel":
+        return lambda: _reel_generate(pending["reel_prompt"], pending["frames_dir"])
+    return lambda: _typed_generate(pending["name"], pending["description"])
+
+
+async def run_format_preview(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, progress: str
 ) -> None:
-    """Generate template (validate, auto-retry once), compose a sample
-    reel, and show Save / Regenerate / Discard."""
+    """Shared engine: generate a template (validate, auto-retry once),
+    then preview+offer. Reads pending_format (its origin selects the
+    generator). Aborts on INSUFFICIENT_SIGNAL or repeated invalidity."""
     chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
     pending = context.user_data.get("pending_format")
     if not pending:
         await context.bot.send_message(
@@ -200,15 +232,21 @@ async def _generate_and_preview_format(
         )
         return
 
-    name, desc = pending["name"], pending["description"]
-    await context.bot.send_message(
-        chat_id=chat_id, text="🛠 Building your format, ~30-60 sec...",
-    )
+    await context.bot.send_message(chat_id=chat_id, text=progress)
+    generate = _make_generator(pending)
 
     template = None
     for attempt in range(1, MAX_TEMPLATE_ATTEMPTS + 1):
-        candidate = await _generate_template(name, desc)
-        if candidate is not None:
+        status, candidate = await generate()
+        if status == "insufficient":
+            context.user_data.pop("pending_format", None)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Couldn't analyze this reel into a format (no clear "
+                     "structure in the speech or the frames).",
+            )
+            return
+        if status == "ok" and candidate is not None:
             ok, reason = validate_template_placeholders(candidate)
             if ok:
                 template = candidate
@@ -226,12 +264,31 @@ async def _generate_and_preview_format(
         context.user_data.pop("pending_format", None)
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Couldn't build a valid format from that description. "
-                 "Try describing it differently.",
+            text="Couldn't build a valid format. Try a different description "
+                 "or reel.",
         )
         return
 
     pending["template"] = template
+    await _preview_and_offer(update, context)
+
+
+async def _preview_and_offer(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Shared tail: compose a sample reel from the (already validated)
+    pending template and offer Save / Regenerate / Discard."""
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    pending = context.user_data.get("pending_format")
+    if not pending or not pending.get("template"):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Start again from ➕ Add format.",
+        )
+        return
+
+    name = pending["name"]
+    template = pending["template"]
 
     # Compose a sample reel for preview using the real analysis + generic
     # topic/hook. A valid template can still be saved if the sample call
@@ -267,6 +324,19 @@ async def _generate_and_preview_format(
             ),
             reply_markup=markup,
         )
+
+
+async def _generate_and_preview_format(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Typed-description origin entry: tag origin and run the shared
+    engine."""
+    pending = context.user_data.get("pending_format")
+    if pending is not None:
+        pending["origin"] = "typed"
+    await run_format_preview(
+        update, context, progress="🛠 Building your format, ~30-60 sec...",
+    )
 
 
 @require_auth
@@ -308,13 +378,20 @@ async def format_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def format_regen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    if not context.user_data.get("pending_format"):
+    pending = context.user_data.get("pending_format")
+    if not pending:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="Nothing to regenerate — start from ➕ Add format.",
         )
         return
-    await _generate_and_preview_format(update, context)
+    # Branch on origin: a reel-sourced pending must regen via the vision
+    # analysis (frames still on disk), NOT the typed generator.
+    if pending.get("origin") == "reel":
+        progress = "🧬 Re-analyzing this reel into a format, ~30-60 sec..."
+    else:
+        progress = "🛠 Rebuilding your format, ~30-60 sec..."
+    await run_format_preview(update, context, progress=progress)
 
 
 @require_auth

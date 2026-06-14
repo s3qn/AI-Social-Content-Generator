@@ -37,6 +37,7 @@ from ai_social_content_generator.telegram_bot.actions.viral_posts import (
     viral_transcript_route,
     viral_hooks_route,
     viral_hookadd_route,
+    viral_format_route,
 )
 from ai_social_content_generator.telegram_bot.actions.settings import (
     settings_submenu_route,
@@ -242,6 +243,9 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(viral_hookadd_route, pattern=r"^viral_hookadd_\d+_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(viral_format_route, pattern=r"^viral_format_\d+$")
     )
     application.add_handler(
         CallbackQueryHandler(

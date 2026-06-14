@@ -24,11 +24,21 @@ from ai_social_content_generator.ingestion.instagram_scraper import (
     update_cached_transcript,
     viral_excel_path,
 )
-from ai_social_content_generator.ingestion.transcribe import transcribe_local
+from ai_social_content_generator.ingestion.transcribe import (
+    transcribe_local_segments,
+    transcript_text,
+    transcript_segments,
+)
+from ai_social_content_generator.ingestion.frames import extract_frames
 
 logger = logging.getLogger(__name__)
 
 HOOKS_SKILL_PATH = Path("src/ai_social_content_generator/viral_hooks/SKILL.md")
+CREATE_FROM_REEL_SKILL_PATH = Path(
+    "src/ai_social_content_generator/create_reel_format_from_reel/SKILL.md"
+)
+VIRAL_FRAMES_DIR = Path("cache/viral_frames")
+PACING_HOLD_THRESHOLD = 1.5  # seconds; a gap this long reads as a deliberate hold
 
 # Vault topics are 3-200 chars (same floor/cap as the own-idea flow).
 VIRAL_TOPIC_MIN_LEN = 3
@@ -605,6 +615,9 @@ async def viral_view_route(
         keyboard.append([InlineKeyboardButton(
             "🎤 Full transcript", callback_data=f"viral_transcript_{idx}"
         )])
+        keyboard.append([InlineKeyboardButton(
+            "🧬 Build format from this", callback_data=f"viral_format_{idx}"
+        )])
     markup = InlineKeyboardMarkup(keyboard)
 
     sent = False
@@ -638,8 +651,11 @@ async def _ensure_transcript(
     chat_id = update.effective_chat.id
     r = context.user_data["viral_results"][idx]
 
+    # Return the TEXT view regardless of stored shape (old reports store a
+    # plain string; new ones store {"text","segments"}). 🎤/💡 stay
+    # string-only; Phase 3 reads r["transcript"] raw for segments.
     if r.get("transcript"):
-        return r["transcript"]
+        return transcript_text(r["transcript"])
 
     local_video = r.get("local_video")
     if not local_video or not Path(local_video).exists():
@@ -662,14 +678,19 @@ async def _ensure_transcript(
         )
         # MUST be to_thread: this runs in a callback handler; ~22s of
         # Whisper CPU on the event loop would freeze the bot for everyone.
-        text = await asyncio.to_thread(transcribe_local, Path(local_video))
+        result = await asyncio.to_thread(
+            transcribe_local_segments, Path(local_video)
+        )
     finally:
         in_flight.discard(pk)
 
+    text = result["text"]
     if text:
-        r["transcript"] = text
+        # Store the full {"text","segments"} object so Phase 3 pacing can
+        # read segments; the cache + future reports reuse it.
+        r["transcript"] = result
         await asyncio.to_thread(
-            update_cached_transcript, r.get("keyword_source", ""), pk, text,
+            update_cached_transcript, r.get("keyword_source", ""), pk, result,
         )
     return text
 
@@ -714,6 +735,144 @@ async def viral_transcript_route(
             text=f"```\n{_escape_codeblock(chunk)}\n```",
             parse_mode="MarkdownV2",
         )
+
+
+def _fmt_ts(sec: float) -> str:
+    m, s = divmod(int(sec), 60)
+    return f"{m}:{s:02d}"
+
+
+def _build_pacing_summary(text: str, segments: list[dict], duration: float) -> str:
+    """Human-readable pacing line: duration, word count, words/sec, and any
+    detected holds (gaps >= PACING_HOLD_THRESHOLD between segments). Old
+    reports have no segments → falls back to a duration-only note."""
+    words = len(text.split()) if text else 0
+    parts = []
+    if duration:
+        parts.append(f"Duration ~{duration:.1f}s")
+    parts.append(f"{words} words")
+    if duration and words:
+        parts.append(f"{words / duration:.1f} words/sec")
+    summary = ", ".join(parts) + "."
+
+    holds = []
+    for a, b in zip(segments, segments[1:]):
+        gap = b["start"] - a["end"]
+        if gap >= PACING_HOLD_THRESHOLD:
+            holds.append(f"{gap:.1f}s pause at ~{_fmt_ts(a['end'])}")
+    if holds:
+        summary += " Holds: " + "; ".join(holds) + "."
+    elif not segments:
+        summary += " (No segment timing available; pacing estimated from length.)"
+    return summary
+
+
+@require_auth
+async def viral_format_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """🧬: analyze a viral reel (transcript + pacing + frames) into a
+    reusable custom reel format. Second front door to the Phase 2 engine."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+
+    try:
+        idx = int(query.data.removeprefix("viral_format_"))
+    except ValueError:
+        logger.error("viral_format_route: bad callback_data=%r", query.data)
+        return
+
+    results = context.user_data.get("viral_results")
+    if not results or idx < 0 or idx >= len(results):
+        await context.bot.send_message(
+            chat_id=chat_id, text="Report expired — generate again.",
+        )
+        return
+
+    user_data = load_user(user_id)
+    if user_data is None or "handle" not in user_data or "niche" not in user_data:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="No account info. Please complete onboarding first.",
+        )
+        return
+    handle = user_data["handle"]
+    if not Path(f"cache/{handle}-analysis.json").exists():
+        await context.bot.send_message(
+            chat_id=chat_id, text="Please run Analyze first before building a format.",
+        )
+        return
+
+    r = results[idx]
+    transcript = await _ensure_transcript(update, context, idx)
+    if transcript is None:
+        return  # transcription in flight; user already notified
+
+    segments = transcript_segments(r.get("transcript"))
+    duration = float(r.get("video_duration") or 0)
+
+    # Extract frames (blocking ffmpeg → to_thread). The button only shows
+    # when local_video exists, but guard anyway.
+    frames: list[Path] = []
+    local_video = r.get("local_video")
+    pk = r.get("pk") or str(idx)
+    frames_dir = VIRAL_FRAMES_DIR / pk
+    if local_video and Path(local_video).exists():
+        frames = await asyncio.to_thread(
+            extract_frames, Path(local_video), frames_dir, 6,
+            duration if duration else None,
+        )
+
+    # Thin-input pre-check: nothing to analyze at all.
+    if not transcript and not frames:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't analyze this reel (no speech, no readable frames).",
+        )
+        return
+
+    pacing = _build_pacing_summary(transcript, segments, duration)
+    if frames:
+        listing = "\n".join(f"- {f.resolve()}" for f in frames)
+        visual_note = (
+            "Frames extracted from the reel are attached as image files. "
+            "Read and analyze each one:\n" + listing
+        )
+        image_dir = str(frames_dir.resolve())
+    else:
+        visual_note = (
+            "No usable video frames were available; analyze from the "
+            "transcript and pacing only."
+        )
+        image_dir = ""
+
+    skill = CREATE_FROM_REEL_SKILL_PATH.read_text(encoding="utf-8")
+    prompt = skill.format(
+        reel_transcript=transcript or "(no speech detected)",
+        reel_pacing=pacing,
+        reel_visual_note=visual_note,
+    )
+
+    username = r.get("username") or "creator"
+    auto_name = f"{username}'s format"[:40]
+
+    context.user_data["pending_format"] = {
+        "name": auto_name,
+        "origin": "reel",
+        "reel_prompt": prompt,
+        "frames_dir": image_dir,
+        "source_reel_pk": pk,
+    }
+    # Lazy import — reel_formats_ui pulls compose modules; only needed here.
+    from ai_social_content_generator.telegram_bot.actions.reel_formats_ui import (
+        run_format_preview,
+    )
+    await run_format_preview(
+        update, context,
+        progress="🧬 Analyzing this reel into a format, ~30-60 sec...",
+    )
 
 
 @require_auth
