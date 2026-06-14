@@ -68,6 +68,10 @@ from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     carousel_edit_show,
     carousel_edit_slide_route,
     carousel_edit_cancel_route,
+    slide_remove_show,
+    slide_remove_route,
+    slide_add_show,
+    slide_add_route,
     carousel_makereel_route,
     carousel_makereel_format_route,
 )
@@ -276,6 +280,18 @@ if __name__ == '__main__':
     )
     application.add_handler(
         CallbackQueryHandler(carousel_edit_cancel_route, pattern=r"^edit_cancel$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(slide_remove_show, pattern=r"^slide_remove$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(slide_remove_route, pattern=r"^slide_rm_\d+$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(slide_add_show, pattern=r"^slide_add$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(slide_add_route, pattern=r"^slide_ins_\d+$")
     )
     application.add_handler(
         CallbackQueryHandler(carousel_makereel_route, pattern=r"^gen_carousel_makereel$")

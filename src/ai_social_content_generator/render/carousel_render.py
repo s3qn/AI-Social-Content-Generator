@@ -291,7 +291,21 @@ async def render_carousel(
 
             for i, slide in enumerate(slides, start=1):
                 text = slide.get("text", "")
-                kind = slide.get("type", "body")
+                # Slide type is DERIVED FROM POSITION, not the stored
+                # `type` field: after arbitrary add/remove in edit mode a
+                # stored type can be wrong for its slot (e.g. removing the
+                # hook leaves a "body" in position 1). Position decides
+                # treatment so the carousel self-heals. For the normal
+                # generate flow this is a no-op (generated hook is first,
+                # cta last). A lone slide (total==1) is treated as the
+                # hook — it's the opener; cta treatment on a single slide
+                # makes no sense.
+                if i == 1:
+                    kind = "hook"
+                elif i == total:
+                    kind = "cta"
+                else:
+                    kind = "body"
                 slide_text_html = _fmt(text)
                 font_size = _body_font_size(text)
                 # Hook slide: slightly larger to feel like a headline

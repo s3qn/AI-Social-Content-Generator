@@ -369,6 +369,8 @@ def _edit_slide_picker(slide_count: int) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
+    rows.append([InlineKeyboardButton("➕ Add slide", callback_data="slide_add")])
+    rows.append([InlineKeyboardButton("➖ Remove slide", callback_data="slide_remove")])
     rows.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
     return InlineKeyboardMarkup(rows)
 
@@ -465,6 +467,193 @@ async def carousel_edit_cancel_route(
             chat_id=update.effective_chat.id,
             text="Edit cancelled.",
         )
+
+
+# Floor of 2 so a hook+cta minimum always survives a remove.
+SLIDE_MIN_FLOOR = 2
+# Teaching placeholder for a freshly-added slide; the *stars* show the
+# user how to mark highlighted words. Shown literally in a code block,
+# then edited via the existing editing_slide capture.
+SLIDE_PLACEHOLDER = "Change this text into *something you want.*"
+
+
+@require_auth
+async def slide_remove_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """➖ Remove slide tap: show a per-slide picker, or block when the
+    carousel is already at the 2-slide floor."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    data = context.user_data.get("last_carousel")
+    slides = data.get("slides") if data else None
+    if not slides:
+        await context.bot.send_message(
+            chat_id=chat_id, text="Generate a carousel first.",
+        )
+        return
+    if len(slides) <= SLIDE_MIN_FLOOR:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="A carousel needs at least 2 slides; can't remove more.",
+        )
+        return
+
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for i in range(1, len(slides) + 1):
+        row.append(InlineKeyboardButton(f"Slide {i}", callback_data=f"slide_rm_{i}"))
+        if len(row) == 3:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="➖ Pick a slide to remove:",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+
+
+@require_auth
+async def slide_remove_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Remove the picked slide and re-render. Position-derived types
+    self-heal the structure; page numbers renumber automatically."""
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+
+    try:
+        n = int(query.data.removeprefix("slide_rm_"))
+    except ValueError:
+        await query.answer("Bad slide pick.", show_alert=True)
+        return
+
+    data = context.user_data.get("last_carousel")
+    slides = data.get("slides") if data else None
+    if not slides or n < 1 or n > len(slides):
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't find that slide. Generate a carousel again.",
+        )
+        return
+    # Re-check the floor in the route too (guards a stale double-tap).
+    if len(slides) <= SLIDE_MIN_FLOOR:
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="A carousel needs at least 2 slides; can't remove more.",
+        )
+        return
+
+    await query.answer()
+    slides.pop(n - 1)
+    await _rerender_and_send(
+        update, context,
+        progress_text="🎨 Re-rendering without that slide…",
+        success_caption="Slide removed.",
+    )
+
+
+@require_auth
+async def slide_add_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """➕ Add slide tap: show an insertion-point picker. slide_ins_K
+    inserts at list index K (0 = prepend, N = append)."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    data = context.user_data.get("last_carousel")
+    slides = data.get("slides") if data else None
+    if not slides:
+        await context.bot.send_message(
+            chat_id=chat_id, text="Generate a carousel first.",
+        )
+        return
+
+    n = len(slides)
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton("⏮ At the start", callback_data="slide_ins_0")]
+    ]
+    row: list[InlineKeyboardButton] = []
+    for k in range(1, n):  # "After slide k" == insert at index k
+        row.append(InlineKeyboardButton(
+            f"After slide {k}", callback_data=f"slide_ins_{k}"
+        ))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("⏭ At the end", callback_data=f"slide_ins_{n}")])
+    rows.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="➕ Where should the new slide go?",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+
+
+@require_auth
+async def slide_add_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Insert a placeholder slide at the chosen index, then drive the
+    EXISTING editing_slide capture so the user's next message edits it
+    and triggers _rerender_and_send — add+edit is one continuous flow,
+    no new capture branch."""
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+
+    try:
+        k = int(query.data.removeprefix("slide_ins_"))
+    except ValueError:
+        await query.answer("Bad position.", show_alert=True)
+        return
+
+    data = context.user_data.get("last_carousel")
+    slides = data.get("slides") if data else None
+    if not slides:
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=chat_id, text="Generate a carousel first.",
+        )
+        return
+    if k < 0 or k > len(slides):
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't place the slide. Generate a carousel again.",
+        )
+        return
+
+    await query.answer()
+    # type is advisory now; position decides render treatment.
+    slides.insert(k, {"type": "body", "n": 0, "text": SLIDE_PLACEHOLDER, "sub": None})
+    # The new slide is at 1-based position k+1; the existing capture
+    # mutates slides[editing-1] and re-renders.
+    context.user_data["editing_slide"] = k + 1
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✍️ New slide added at position {k + 1}. Here's a starter — "
+            "tap to copy, edit it, and send it back. Keep or move the "
+            "*stars* to highlight words."
+        ),
+    )
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"```\n{_escape_codeblock(SLIDE_PLACEHOLDER)}\n```",
+        parse_mode="MarkdownV2",
+    )
 
 
 @require_auth
