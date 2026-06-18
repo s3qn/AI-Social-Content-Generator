@@ -17,7 +17,7 @@ questions, and she does the heavy lifting.
 **How to open the menu:** just type any message (like "hi") in the chat, and the menu
 appears.
 
-![Main menu](images/01-main-menu.jpg)
+<img src="images/01-main-menu.jpg" alt="Main menu" width="320">
 
 ---
 
@@ -69,7 +69,7 @@ responds to.
 fresh read — for example if your content has shifted, or every month or so. You don't
 need to do it before every post.
 
-![Analysis summary](images/03-analysis-summary.jpg)
+<img src="images/03-analysis-summary.jpg" alt="Analysis summary" width="320">
 
 ---
 
@@ -93,7 +93,7 @@ After tapping **➕ Brainstorm new ideas**, you choose how:
   niche and what works on your account. Great when you're staring at a blank page.
 - **✍️ Write my own idea** — you type one idea yourself.
 
-![How do you want to brainstorm?](images/04b-brainstorm-source.jpg)
+<img src="images/04b-brainstorm-source.jpg" alt="How do you want to brainstorm?" width="320">
 
 ### When you write your own idea
 
@@ -102,7 +102,7 @@ After tapping **➕ Brainstorm new ideas**, you choose how:
    - **💾 Keep idea as-is** — saves exactly what you typed.
    - **🌱 Expand to many** — Stella turns your one idea into a batch of related ideas.
 
-![Brainstorm menu](images/04-brainstorm-menu.jpg)
+<img src="images/04-brainstorm-menu.jpg" alt="Brainstorm menu" width="320">
 
 ---
 
@@ -121,7 +121,7 @@ A carousel is the swipeable, multi-image Instagram post.
 6. Tap **🎨 Generate images** to turn the text into real images.
 7. She sends back your finished carousel as a single preview sheet.
 
-![Carousel preview sheet](images/05-carousel-preview.jpg)
+<img src="images/05-carousel-preview.jpg" alt="Carousel preview sheet" width="320">
 
 From here you can edit it, get the images, turn it into a reel, or publish it — see the
 next sections.
@@ -158,7 +158,7 @@ Right under the carousel preview, you have editing tools.
 1. Tap **✏️ Edit text**, then **➖ Remove slide**.
 2. Tap the slide to remove. (A carousel always keeps at least 2 slides.)
 
-![Pick a slide to edit](images/06-edit-slide-picker.jpg)
+<img src="images/06-edit-slide-picker.jpg" alt="Pick a slide to edit" width="320">
 
 ---
 
@@ -174,7 +174,7 @@ Instagram first — see [section 14](#14-connect-your-instagram-account).)
 
 To stop, tap **❌ Cancel** — nothing gets posted.
 
-![Instagram post preview](images/07-publish-preview.jpg)
+<img src="images/07-publish-preview.jpg" alt="Instagram post preview" width="320">
 
 ---
 
@@ -194,7 +194,7 @@ show, and a caption.
 5. Choose your hook (same as the carousel: **🤖 Generate with AI** or **✍️ Write your own**).
 6. Stella writes your reel script and sends it to you.
 
-![Reel format picker](images/08-reel-format-picker.jpg)
+<img src="images/08-reel-format-picker.jpg" alt="Reel format picker" width="320">
 
 ---
 
@@ -235,7 +235,7 @@ The bot comes with two reel styles, but you can teach it your own. This is handy
 
 Saved formats then appear as a choice every time you make a reel.
 
-![Reel formats with Add format and the name prompt](images/09-add-format.jpg)
+<img src="images/09-add-format.jpg" alt="Reel formats with Add format and the name prompt" width="320">
 
 ### Build a format from a viral reel
 
@@ -243,7 +243,7 @@ See [section 10](#10-find-trending-content-viral-posts) — when viewing a trend
 tap **🧬 Build format from this**, and Stella studies that reel and turns its style into
 a reusable format for you.
 
-![Sample reel preview with Save / Regenerate / Discard](images/09-format-sample-preview.jpg)
+<img src="images/09-format-sample-preview.jpg" alt="Sample reel preview with Save / Regenerate / Discard" width="320">
 
 ---
 
@@ -265,7 +265,7 @@ them for ideas, hooks, and formats.
 3. Tap **📊 Generate report**.
 4. Stella searches and sends back compact lists of top reels per keyword.
 
-![Viral Posts Research menu](images/10-viral-research-menu.jpg)
+<img src="images/10-viral-research-menu.jpg" alt="Viral Posts Research menu" width="320">
 
 Each reel is tagged **🏆 Biggest** or **💬 Resonant**:
 - **🏆 Biggest** = the giant hits, ranked by raw view count.
@@ -273,7 +273,7 @@ Each reel is tagged **🏆 Biggest** or **💬 Resonant**:
   and shares relative to views). Often a stronger signal that the *topic* itself
   resonates, even if the view count is smaller.
 
-![Viral report list](images/10-viral-report.jpg)
+<img src="images/10-viral-report.jpg" alt="Viral report list" width="320">
 
 ### Dig into one reel
 
@@ -287,7 +287,7 @@ Tap a reel's number to open its full card. From there you can:
 - **🧬 Build format from this** — turn the reel's style into your own reusable reel
   format (see [section 9](#9-build-your-own-reel-format)).
 
-![A viral reel's full card](images/10b-viral-reel-card.jpg)
+<img src="images/10b-viral-reel-card.jpg" alt="A viral reel's full card" width="320">
 
 > Some reels are music-only (no talking). For those, the transcript, AI topics, and
 > format options won't be available.
@@ -325,7 +325,7 @@ keeps your topics and your voice (the substance).
 1. Tap **👥 Competitors**, then **➖ Remove Competitor**.
 2. Tap the number of the one to remove.
 
-![Competitors list](images/11-competitors-list.jpg)
+<img src="images/11-competitors-list.jpg" alt="Competitors list" width="320">
 
 ---
 
@@ -359,7 +359,7 @@ If you just changed your background or logo and want your current carousel updat
 match, tap **🔄 Re-render current carousel**. Stella re-makes the images with your new
 styling (no need to write the carousel again).
 
-![Customize carousel menu](images/12-customize-menu.jpg)
+<img src="images/12-customize-menu.jpg" alt="Customize carousel menu" width="320">
 
 ---
 
@@ -378,11 +378,11 @@ At your chosen time, Stella sends a short **Morning Ideas** message with a few i
 your list. Tap any one to jump straight into making a carousel or reel from it. (Times are
 Jerusalem time.)
 
-![Scheduler menu](images/13-scheduler-menu.jpg)
+<img src="images/13-scheduler-menu.jpg" alt="Scheduler menu" width="320">
 
 This is the daily **Morning Ideas** message you'll receive:
 
-![Morning Ideas brief](images/13b-morning-ideas-brief.jpg)
+<img src="images/13b-morning-ideas-brief.jpg" alt="Morning Ideas brief" width="320">
 
 ---
 
@@ -398,7 +398,7 @@ Connect Instagram once so the bot can publish carousels for you.
 Once connected, the Settings button shows **📷 Instagram (connected)**. If you ever switch
 accounts, open it again and tap **🔄 Reconnect Instagram**.
 
-![Connect Instagram](images/14-connect-instagram.jpg)
+<img src="images/14-connect-instagram.jpg" alt="Connect Instagram" width="320">
 
 ---
 
