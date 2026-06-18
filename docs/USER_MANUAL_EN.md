@@ -1,4 +1,4 @@
-# Your Content Assistant — User Guide
+# Your Content Assistant: User Guide
 
 Hi! This bot is your personal social-media helper on Telegram. Her name is **Stella**.
 She studies your Instagram, helps you come up with post ideas, and writes finished
@@ -9,9 +9,9 @@ You don't need to know anything technical. You just tap buttons and answer simpl
 questions, and she does the heavy lifting.
 
 > **A quick word on what you get**
-> - **Carousels** come out as real, ready images you can post — and the bot can even
+> - **Carousels** come out as real, ready images you can post, and the bot can even
 >   publish them straight to Instagram for you.
-> - **Reels** come out as a written **script** — the hook, what to say or put on screen,
+> - **Reels** come out as a written **script**: the hook, what to say or put on screen,
 >   and a caption with hashtags. You film and edit the actual video yourself. (For now!)
 
 **How to open the menu:** just type any message (like "hi") in the chat, and the menu
@@ -48,10 +48,10 @@ You only do this once.
 2. Stella asks for your Instagram handle. Send it (for example `@yourname` or `yourname`).
 3. She shows your profile picture and bio and asks **"Is this you?"** Tap **✅ Yes**.
    (If it's the wrong account, tap **❌ No** and send the right handle.)
-4. She asks what you do. Write 2–3 sentences about your niche — who you help and how.
+4. She asks what you do. Write 2-3 sentences about your niche: who you help and how.
 5. She shows a tidy summary of your niche and asks **"Is this right?"** Tap **✅ Yes**.
 
-That's it — you're set up. 🎉
+That's it, you're set up. 🎉
 
 ---
 
@@ -66,7 +66,7 @@ responds to.
 3. Wait a moment. She sends back a summary of your account.
 
 **Do this once right after setup.** After that, you can tap it again anytime you want a
-fresh read — for example if your content has shifted, or every month or so. You don't
+fresh read, for example if your content has shifted, or every month or so. You don't
 need to do it before every post.
 
 <img src="images/03-analysis-summary.jpg" alt="Analysis summary" width="320">
@@ -81,26 +81,26 @@ when making a carousel or reel.
 1. Open the menu and tap **💡 Get post ideas**.
 2. Tap **💭 Brainstorm**.
 3. You'll see your current ideas, plus these choices:
-   - **➕ Brainstorm new ideas** — get fresh ideas.
-   - **🗑️ Remove topic** — delete one idea.
-   - **⚠️ Remove all** — clear the whole list (asks you to confirm first).
+   - **➕ Brainstorm new ideas**: get fresh ideas.
+   - **🗑️ Remove topic**: delete one idea.
+   - **⚠️ Remove all**: clear the whole list (asks you to confirm first).
 
 ### Get fresh ideas
 
 After tapping **➕ Brainstorm new ideas**, you choose how:
 
-- **🤖 Auto-generate from profile** — Stella invents a batch of new ideas based on your
+- **🤖 Auto-generate from profile**: Stella invents a batch of new ideas based on your
   niche and what works on your account. Great when you're staring at a blank page.
-- **✍️ Write my own idea** — you type one idea yourself.
+- **✍️ Write my own idea**: you type one idea yourself.
 
 <img src="images/04b-brainstorm-source.jpg" alt="How do you want to brainstorm?" width="320">
 
 ### When you write your own idea
 
-1. Tap **✍️ Write my own idea** and type your idea (a short line, 5–15 words).
+1. Tap **✍️ Write my own idea** and type your idea (a short line, 5-15 words).
 2. Choose what to do with it:
-   - **💾 Keep idea as-is** — saves exactly what you typed.
-   - **🌱 Expand to many** — Stella turns your one idea into a batch of related ideas.
+   - **💾 Keep idea as-is**: saves exactly what you typed.
+   - **🌱 Expand to many**: Stella turns your one idea into a batch of related ideas.
 
 <img src="images/04-brainstorm-menu.jpg" alt="Brainstorm menu" width="320">
 
@@ -114,16 +114,16 @@ A carousel is the swipeable, multi-image Instagram post.
 2. Tap **📜 Carousel post**.
 3. Pick an idea by tapping its number.
 4. Choose your hook (the opening line):
-   - **🤖 Generate with AI** — Stella offers several hook options; tap the number of the
+   - **🤖 Generate with AI**: Stella offers several hook options; tap the number of the
      one you like. Not feeling them? Tap **🔄 Regenerate headlines** for a fresh set.
-   - **✍️ Write your own** — type your own hook and it's used exactly as written.
+   - **✍️ Write your own**: type your own hook and it's used exactly as written.
 5. Stella writes the full carousel text and shows it to you.
 6. Tap **🎨 Generate images** to turn the text into real images.
 7. She sends back your finished carousel as a single preview sheet.
 
 <img src="images/05-carousel-preview.jpg" alt="Carousel preview sheet" width="320">
 
-From here you can edit it, get the images, turn it into a reel, or publish it — see the
+From here you can edit it, get the images, turn it into a reel, or publish it. See the
 next sections.
 
 > **Tip:** To get each slide as its own image (for posting manually), tap
@@ -151,7 +151,7 @@ Right under the carousel preview, you have editing tools.
 
 1. Tap **✏️ Edit text**, then **➕ Add slide**.
 2. Choose where it goes (at the start, after a certain slide, or at the end).
-3. Stella adds a placeholder slide and asks for its text — type it and send it back.
+3. Stella adds a placeholder slide and asks for its text. Type it and send it back.
 
 ### Remove a slide
 
@@ -165,14 +165,14 @@ Right under the carousel preview, you have editing tools.
 ## 6. Publish a carousel to Instagram
 
 You can post your carousel straight to Instagram from the bot. (You need to connect
-Instagram first — see [section 14](#14-connect-your-instagram-account).)
+Instagram first; see [section 14](#14-connect-your-instagram-account).)
 
 1. Under your carousel preview, tap **📤 Upload to Instagram**.
 2. Stella shows a preview of how the post will look, with your caption and hashtags.
 3. If it looks good, tap **✅ Looks good, publish**.
 4. She posts it and sends you the link. Done!
 
-To stop, tap **❌ Cancel** — nothing gets posted.
+To stop, tap **❌ Cancel**: nothing gets posted.
 
 <img src="images/07-publish-preview.jpg" alt="Instagram post preview" width="320">
 
@@ -186,10 +186,10 @@ show, and a caption.
 1. Open the menu and tap **💡 Get post ideas**.
 2. Tap **🎥 Reel ideas**.
 3. Choose the style of reel:
-   - **🎤 Talking head** — you speak to the camera. More personal, more effort.
-   - **📝 Text overlay** — viewers read text over simple background video. No speaking.
+   - **🎤 Talking head**: you speak to the camera. More personal, more effort.
+   - **📝 Text overlay**: viewers read text over simple background video. No speaking.
      Low effort.
-   - (Any custom formats you've built appear here too — see [section 9](#9-build-your-own-reel-format).)
+   - (Any custom formats you've built appear here too; see [section 9](#9-build-your-own-reel-format).)
 4. Pick an idea by tapping its number.
 5. Choose your hook (same as the carousel: **🤖 Generate with AI** or **✍️ Write your own**).
 6. Stella writes your reel script and sends it to you.
@@ -239,7 +239,7 @@ Saved formats then appear as a choice every time you make a reel.
 
 ### Build a format from a viral reel
 
-See [section 10](#10-find-trending-content-viral-posts) — when viewing a trending reel,
+See [section 10](#10-find-trending-content-viral-posts): when viewing a trending reel,
 tap **🧬 Build format from this**, and Stella studies that reel and turns its style into
 a reusable format for you.
 
@@ -250,7 +250,7 @@ a reusable format for you.
 ## 10. Find trending content (Viral posts)
 
 This is where you go hunting for fresh ideas and trends. You give Stella keywords, and
-she finds reels across Instagram that are doing well on those topics — so you can mine
+she finds reels across Instagram that are doing well on those topics, so you can mine
 them for ideas, hooks, and formats.
 
 > **Viral posts vs. Competitors:** Use **Viral posts** when you're actively looking for a
@@ -279,12 +279,12 @@ Each reel is tagged **🏆 Biggest** or **💬 Resonant**:
 
 Tap a reel's number to open its full card. From there you can:
 
-- **➕ Add as topic** — save this reel's idea into your ideas list to make a post from
+- **➕ Add as topic**: save this reel's idea into your ideas list to make a post from
   later.
-- **💡 Generate topics with AI** — Stella reads the reel and suggests several hook ideas
+- **💡 Generate topics with AI**: Stella reads the reel and suggests several hook ideas
   adapted to *your* niche and voice. Tap a number to save one.
-- **🎤 Full transcript** — read everything that's said in the reel.
-- **🧬 Build format from this** — turn the reel's style into your own reusable reel
+- **🎤 Full transcript**: read everything that's said in the reel.
+- **🧬 Build format from this**: turn the reel's style into your own reusable reel
   format (see [section 9](#9-build-your-own-reel-format)).
 
 <img src="images/10b-viral-reel-card.jpg" alt="A viral reel's full card" width="320">
@@ -307,10 +307,10 @@ pulls brand-new reels.
 
 Competitors are specific accounts in your niche that you want Stella to **learn from**.
 Once you add them, their best-performing posts quietly shape the *style and structure*
-of everything she writes for you — she borrows what's working for them (the form), but
+of everything she writes for you. She borrows what's working for them (the form), but
 keeps your topics and your voice (the substance).
 
-> Set this up once with accounts you admire or compete with. It works in the background —
+> Set this up once with accounts you admire or compete with. It works in the background;
 > you don't tap it before each post.
 
 ### Add a competitor
@@ -331,7 +331,7 @@ keeps your topics and your voice (the substance).
 
 ## 12. Change your background or logo
 
-You can give your carousels your own look — your own background image and your own logo.
+You can give your carousels your own look: your own background image and your own logo.
 
 ### Set a background image
 
@@ -340,7 +340,7 @@ You can give your carousels your own look — your own background image and your
 3. Send a photo to use as the background.
 
 For a clean result:
-- **No text on the image** — no title, subtitle, or handle. The bot adds all the words.
+- **No text on the image**: no title, subtitle, or handle. The bot adds all the words.
 - Portrait shape (tall, 4:5) works best.
 - Leave a calm, simple area (top or middle) where the text can sit.
 
@@ -349,7 +349,7 @@ Stella saves it and shows you a quick preview slide so you can check the text lo
 ### Set a logo
 
 1. In **🎨 Customize carousel**, tap **🏷 Logo**.
-2. Send your logo **as a file** (use the paperclip → File), **not** as a photo — sending
+2. Send your logo **as a file** (use the paperclip → File), **not** as a photo. Sending
    it as a photo removes the transparency.
 3. Use a transparent PNG, roughly square. It appears on your first and last slides.
 
@@ -372,7 +372,7 @@ down to a blank page.
 2. Choose when:
    - **🌅 Morning (09:00)**
    - **🌆 Evening (18:00)**
-   - **🔕 Off** — no reminders.
+   - **🔕 Off**: no reminders.
 
 At your chosen time, Stella sends a short **Morning Ideas** message with a few ideas from
 your list. Tap any one to jump straight into making a carousel or reel from it. (Times are
