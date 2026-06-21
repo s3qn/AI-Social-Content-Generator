@@ -203,22 +203,8 @@ async def publish_scheduled_callback(context: ContextTypes.DEFAULT_TYPE) -> None
     if _count_published_last_24h(user_data) >= MAX_PUBLISHED_24H:
         _mark("failed")
         await _notify(
-            "Instagram's daily publishing limit was reached, so a scheduled "
-            "post wasn't sent. Try again tomorrow."
-        )
-        return
-
-    # Token fetched FRESH at fire time (it may have been refreshed). Only
-    # ig_account_id was snapshotted.
-    from ai_social_content_generator.instagram.token_store import get_token
-
-    tok = get_token(uid)
-    ig_account_id = (tok or {}).get("ig_account_id") or rec.get("ig_account_id")
-    if not tok or not ig_account_id:
-        _mark("failed")
-        await _notify(
-            "Couldn't publish your scheduled carousel — Instagram isn't "
-            "connected. Reconnect from Settings → 📷 Connect Instagram."
+            "The daily publishing limit was reached, so a scheduled post "
+            "wasn't sent. Try again tomorrow."
         )
         return
 
@@ -232,9 +218,11 @@ async def publish_scheduled_callback(context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     # Local import: compose_carousel pulls heavy modules (Playwright, IG
-    # SDK); importing at module top would create a cycle.
+    # SDK); importing at module top would create a cycle. The publisher
+    # reads its own tokens + autopost toggles, so FB rides in for free.
     from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
         _publish_carousel_from_data,
+        summarize_publish_result,
     )
 
     result = await _publish_carousel_from_data(
@@ -242,40 +230,24 @@ async def publish_scheduled_callback(context: ContextTypes.DEFAULT_TYPE) -> None
         slide_paths=slide_paths,
         caption=rec.get("caption", ""),
         hashtags=rec.get("hashtags", ""),
-        ig_account_id=str(ig_account_id),
-        token=tok["token"],
     )
+    any_ok, summary = summarize_publish_result(result)
+    when = format_ts(rec.get("scheduled_ts", 0))
 
-    if result.get("ok"):
-        _mark("published", published_ts=int(time.time()))
-        shutil.rmtree(rec.get("image_dir", ""), ignore_errors=True)
-        permalink = result.get("permalink")
-        when = format_ts(rec.get("scheduled_ts", 0))
-        if permalink:
-            await _notify(f"✅ Your scheduled post ({when}) is live!\n{permalink}")
-        else:
-            await _notify(f"✅ Your scheduled post ({when}) is live!")
-        logger.info("Scheduled publish OK uid=%s post=%s", uid, post_id)
-        return
-
-    err = result.get("error")
-    # A failed post never re-fires (the callback returns early when status
-    # isn't "pending"), so its images are dead weight — delete them in every
-    # failure branch to keep cache/scheduled from growing forever.
-    _mark("failed")
+    # A scheduled post is terminal either way (its images never re-fire), so
+    # delete them in both branches to keep cache/scheduled from growing.
     shutil.rmtree(rec.get("image_dir", ""), ignore_errors=True)
-    if err == "auth":
-        # _publish_carousel_from_data already cleared the token.
-        await _notify(
-            "Instagram rejected the connection while publishing your "
-            "scheduled post. Reconnect from Settings → 📷 Connect Instagram."
-        )
+    if any_ok:
+        # Partial success counts as published — at least one platform posted.
+        _mark("published", published_ts=int(time.time()))
+        await _notify(f"✅ Your scheduled post ({when}):\n{summary}")
+        logger.info("Scheduled publish OK uid=%s post=%s", uid, post_id)
     else:
+        _mark("failed")
         await _notify(
-            "Couldn't publish your scheduled carousel. Please try posting it "
-            "again manually."
+            f"⚠️ Your scheduled post ({when}) couldn't be published:\n{summary}"
         )
-    logger.warning("Scheduled publish failed uid=%s post=%s err=%s", uid, post_id, err)
+        logger.warning("Scheduled publish failed uid=%s post=%s", uid, post_id)
 
 
 # ----------------------------------------------------------------------

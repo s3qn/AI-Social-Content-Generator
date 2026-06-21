@@ -28,6 +28,13 @@ from ai_social_content_generator.instagram.oauth import (
 )
 from ai_social_content_generator.instagram.oauth_state import consume_state
 from ai_social_content_generator.instagram.token_store import save_token
+from ai_social_content_generator.facebook.oauth import (
+    FacebookOAuthError,
+    exchange_code_for_user_token,
+    exchange_for_long_user_token,
+    get_pages,
+)
+from ai_social_content_generator.facebook.token_store import save_fb_token
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +118,77 @@ async def _handle_callback(request: web.Request) -> web.Response:
     return _success_page()
 
 
+def _fb_success_page(page_name: str, multiple: bool) -> web.Response:
+    note = (
+        f"<p>Connected Page: <b>{page_name}</b>.</p>"
+        if page_name else "<p>Your Page is connected.</p>"
+    )
+    if multiple:
+        note += (
+            "<p>You manage more than one Page. If this is the wrong one, "
+            "reconnect from Telegram to switch.</p>"
+        )
+    return _page("Facebook connected ✓", note + "<p>You can close this tab.</p>")
+
+
+def _fb_no_page_page() -> web.Response:
+    return _page(
+        "No Facebook Page found",
+        "<p>This account doesn't admin a Page the app can post to. Create a "
+        "Page (or get admin access), then reconnect from Telegram.</p>",
+        status=400,
+    )
+
+
+async def _handle_fb_callback(request: web.Request) -> web.Response:
+    code = request.query.get("code", "")
+    state = request.query.get("state", "")
+    error = request.query.get("error", "")
+
+    if error:
+        consume_state(state)
+        logger.info("FB OAuth callback returned error=%s", error)
+        return _invalid_page()
+
+    user_id = consume_state(state)
+    if user_id is None:
+        logger.warning("FB OAuth callback with invalid/expired state")
+        return _invalid_page()
+
+    if not code:
+        logger.warning("FB OAuth callback for user_id=%s missing code", user_id)
+        return _invalid_page()
+
+    try:
+        user_tok = await exchange_code_for_user_token(code)
+        long_payload = await exchange_for_long_user_token(user_tok["access_token"])
+        pages = await get_pages(long_payload["access_token"])
+        if not pages:
+            logger.warning("FB OAuth: no Pages for user_id=%s", user_id)
+            return _fb_no_page_page()
+        # v1: use the first Page; surface its name so the user can confirm
+        # (and reconnect to switch if they admin several).
+        page = pages[0]
+        save_fb_token(
+            user_id=user_id,
+            page_token=page["access_token"],
+            page_id=page["id"],
+            page_name=page.get("name", ""),
+        )
+    except FacebookOAuthError as e:
+        logger.warning("FB OAuth exchange failed for user_id=%s: %s", user_id, e)
+        return _error_page()
+    except Exception:
+        logger.exception("Unexpected FB OAuth callback error for user_id=%s", user_id)
+        return _error_page()
+
+    return _fb_success_page(page.get("name", ""), multiple=len(pages) > 1)
+
+
 def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/oauth/callback", _handle_callback)
+    app.router.add_get("/oauth/facebook/callback", _handle_fb_callback)
     return app
 
 

@@ -15,11 +15,20 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.users import load_user, save_user
+from ai_social_content_generator.telegram_bot.users import (
+    get_autopost,
+    load_user,
+    save_user,
+)
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
 from ai_social_content_generator.instagram.publish import PublishError, publish_carousel
 from ai_social_content_generator.instagram.token_store import clear_token, get_token
+from ai_social_content_generator.facebook.publish import (
+    FacebookPublishError,
+    publish_facebook_carousel,
+)
+from ai_social_content_generator.facebook.token_store import clear_fb_token, get_fb_token
 from ai_social_content_generator.render.carousel_render import render_carousel
 from ai_social_content_generator.render.contact_sheet import build_contact_sheet
 from ai_social_content_generator.render.mock_post import render_mock_post
@@ -828,23 +837,95 @@ async def carousel_postnow_route(
         )
 
 
+PLATFORM_LABELS = {"instagram": "📷 Instagram", "facebook": "📘 Facebook"}
+
+
+async def _publish_one_instagram(
+    user_id: int, image_urls: list[str], caption_full: str
+) -> dict:
+    """Publish to IG. Returns {ok, permalink|error}. Clears the token on
+    auth failure. Never raises — the caller wants partial success."""
+    tok = get_token(user_id)
+    ig_id = (tok or {}).get("ig_account_id")
+    try:
+        result = await publish_carousel(
+            ig_id=str(ig_id), image_urls=image_urls,
+            caption=caption_full, token=tok["token"],
+        )
+        logger.info("IG publish OK user_id=%s media_id=%s", user_id, result.get("media_id"))
+        return {"ok": True, "permalink": result.get("permalink")}
+    except PublishError as e:
+        if e.auth_failed:
+            clear_token(user_id)
+            logger.warning("IG publish auth failed user_id=%s, cleared token", user_id)
+            return {"ok": False, "error": "auth"}
+        logger.warning("IG publish failed user_id=%s: %s", user_id, e)
+        return {"ok": False, "error": "publish"}
+    except Exception:
+        logger.exception("Unexpected IG publish error user_id=%s", user_id)
+        return {"ok": False, "error": "unexpected"}
+
+
+async def _publish_one_facebook(
+    user_id: int, image_urls: list[str], caption_full: str
+) -> dict:
+    """Publish to a FB Page. Returns {ok, permalink|error}. Clears the token
+    on auth failure. Never raises."""
+    tok = get_fb_token(user_id)
+    try:
+        result = await publish_facebook_carousel(
+            page_id=str((tok or {}).get("page_id")), image_urls=image_urls,
+            caption=caption_full, page_token=tok["page_token"],
+        )
+        logger.info("FB publish OK user_id=%s post_id=%s", user_id, result.get("post_id"))
+        return {"ok": True, "permalink": result.get("permalink")}
+    except FacebookPublishError as e:
+        if e.auth_failed:
+            clear_fb_token(user_id)
+            logger.warning("FB publish auth failed user_id=%s, cleared token", user_id)
+            return {"ok": False, "error": "auth"}
+        logger.warning("FB publish failed user_id=%s: %s", user_id, e)
+        return {"ok": False, "error": "publish"}
+    except Exception:
+        logger.exception("Unexpected FB publish error user_id=%s", user_id)
+        return {"ok": False, "error": "unexpected"}
+
+
 async def _publish_carousel_from_data(
     *,
     user_id: int,
     slide_paths: list[Path],
     caption: str,
     hashtags: str,
-    ig_account_id: str,
-    token: str,
 ) -> dict:
-    """Stage → publish_carousel → permalink → cleanup. Session-free: takes
-    explicit args, reads NO context.user_data. Both the live confirm path
-    and the scheduled job call this.
+    """Stage ONCE, then publish to every ENABLED + CONNECTED platform
+    independently. Session-free: reads tokens + toggles itself, no
+    context.user_data. Both the live confirm path and the scheduled job
+    call this.
 
-    Returns {"ok": True, "permalink": str|None, "media_id": ...} on success
-    or {"ok": False, "error": "staging"|"auth"|"publish"|"unexpected"} on
-    failure. On an auth failure the (now-invalid) token is cleared here so
-    both callers behave identically; each caller does its own notifying."""
+    Returns a per-platform dict:
+      {"instagram": <sub> | None, "facebook": <sub> | None}
+    where None means the platform's toggle is off, and <sub> is
+    {"ok": True, "permalink": str|None} or
+    {"ok": False, "error": "not_connected"|"staging"|"auth"|"publish"|"unexpected"}.
+    One platform failing never blocks the other (partial success)."""
+    autopost = get_autopost(load_user(user_id))
+    ig_on, fb_on = autopost["instagram"], autopost["facebook"]
+    ig_tok = get_token(user_id) if ig_on else None
+    fb_tok = get_fb_token(user_id) if fb_on else None
+    attempt_ig = bool(ig_on and ig_tok and ig_tok.get("ig_account_id"))
+    attempt_fb = bool(fb_on and fb_tok and fb_tok.get("page_id"))
+
+    result: dict = {"instagram": None, "facebook": None}
+    # Enabled but not connected → surfaced so the user knows to connect.
+    if ig_on and not attempt_ig:
+        result["instagram"] = {"ok": False, "error": "not_connected"}
+    if fb_on and not attempt_fb:
+        result["facebook"] = {"ok": False, "error": "not_connected"}
+
+    if not attempt_ig and not attempt_fb:
+        return result  # nothing to stage or publish
+
     caption_full = f"{(caption or '').strip()}\n\n{(hashtags or '').strip()}".strip()
     staged_paths: list[Path] = []
     try:
@@ -854,67 +935,69 @@ async def _publish_carousel_from_data(
             staged_paths = [p for _, p in staged]
         except StagingError:
             logger.exception("Staging failed for user_id=%s", user_id)
-            return {"ok": False, "error": "staging"}
+            if attempt_ig:
+                result["instagram"] = {"ok": False, "error": "staging"}
+            if attempt_fb:
+                result["facebook"] = {"ok": False, "error": "staging"}
+            return result
 
-        try:
-            result = await publish_carousel(
-                ig_id=str(ig_account_id),
-                image_urls=image_urls,
-                caption=caption_full,
-                token=token,
+        # Each platform is independent; one's failure can't skip the other.
+        if attempt_ig:
+            result["instagram"] = await _publish_one_instagram(
+                user_id, image_urls, caption_full,
             )
-            logger.info(
-                "IG publish OK user_id=%s media_id=%s",
-                user_id, result.get("media_id"),
+        if attempt_fb:
+            result["facebook"] = await _publish_one_facebook(
+                user_id, image_urls, caption_full,
             )
-            return {
-                "ok": True,
-                "permalink": result.get("permalink"),
-                "media_id": result.get("media_id"),
-            }
-        except PublishError as e:
-            if e.auth_failed:
-                clear_token(user_id)
-                logger.warning(
-                    "IG publish auth failed user_id=%s, cleared token: %s",
-                    user_id, e,
-                )
-                return {"ok": False, "error": "auth"}
-            logger.warning("IG publish failed user_id=%s: %s", user_id, e)
-            return {"ok": False, "error": "publish"}
-        except Exception:
-            logger.exception("Unexpected IG publish error user_id=%s", user_id)
-            return {"ok": False, "error": "unexpected"}
+        return result
     finally:
         cleanup_staged(staged_paths)
+
+
+def summarize_publish_result(result: dict) -> tuple[bool, str]:
+    """Map a per-platform result into (any_success, user_message). Shared by
+    the live and scheduled callers so wording stays consistent."""
+    lines: list[str] = []
+    any_ok = False
+    for key in ("instagram", "facebook"):
+        sub = result.get(key)
+        if sub is None:
+            continue  # toggle off
+        label = PLATFORM_LABELS[key]
+        if sub.get("ok"):
+            any_ok = True
+            link = sub.get("permalink")
+            lines.append(f"✅ {label}: {link}" if link else f"✅ {label}: posted")
+        else:
+            err = sub.get("error")
+            if err == "not_connected":
+                lines.append(f"⚠️ {label}: turned on but not connected. Connect it in Settings.")
+            elif err == "auth":
+                lines.append(f"❌ {label}: rejected the connection. Reconnect in Settings.")
+            elif err == "staging":
+                lines.append(f"❌ {label}: couldn't prepare the images. Try again.")
+            else:
+                lines.append(f"❌ {label}: couldn't publish. Try again.")
+    if not lines:
+        return False, (
+            "No platform is turned on. Enable Instagram or Facebook in "
+            "Settings → 📤 Autopost settings."
+        )
+    return any_ok, "\n".join(lines)
 
 
 @require_auth
 async def carousel_confirm_route(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Live publish. Token-gate, gather from session, then hand off to the
-    session-free publisher and map its result to the same user messages as
-    before."""
+    """Live publish to every enabled+connected platform. Gather from
+    session, hand off to the session-free multi-platform publisher, and
+    report the per-platform result."""
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-
-    tok = get_token(user_id)
-    if not tok:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Connect Instagram first in Settings → 📷 Connect Instagram.",
-        )
-        return
-    ig_account_id = tok.get("ig_account_id")
-    if not ig_account_id:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Instagram account id missing — reconnect from Settings.",
-        )
-        return
 
     render_data = context.user_data.get("last_render")
     carousel_data = context.user_data.get("last_carousel")
@@ -926,7 +1009,7 @@ async def carousel_confirm_route(
         return
 
     try:
-        await query.edit_message_caption(caption="📤 Publishing to Instagram…")
+        await query.edit_message_caption(caption="📤 Publishing…")
     except Exception:
         # Original message wasn't a photo we own, or was already edited; not fatal.
         pass
@@ -937,29 +1020,10 @@ async def carousel_confirm_route(
         slide_paths=slide_paths,
         caption=carousel_data.get("caption") or "",
         hashtags=carousel_data.get("hashtags") or "",
-        ig_account_id=str(ig_account_id),
-        token=tok["token"],
     )
 
-    if result.get("ok"):
-        permalink = result.get("permalink")
-        text = f"✅ Posted to Instagram!\n{permalink}" if permalink else "✅ Posted to Instagram!"
-        await context.bot.send_message(chat_id=chat_id, text=text)
-        return
-
-    err = result.get("error")
-    if err == "staging":
-        msg = "Couldn't prepare images for upload. Try again."
-    elif err == "auth":
-        msg = (
-            "Instagram rejected the token. Reconnect from Settings → "
-            "📷 Connect Instagram and try again."
-        )
-    elif err == "publish":
-        msg = "Couldn't publish to Instagram. Your images are safe — try again."
-    else:
-        msg = "Something went wrong publishing. Try again."
-    await context.bot.send_message(chat_id=chat_id, text=msg)
+    _any_ok, text = summarize_publish_result(result)
+    await context.bot.send_message(chat_id=chat_id, text=text)
 
 
 @require_auth

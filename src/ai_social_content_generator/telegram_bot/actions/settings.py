@@ -7,11 +7,17 @@ from telegram.ext import ContextTypes
 from ai_social_content_generator.instagram.oauth import build_authorize_url
 from ai_social_content_generator.instagram.oauth_state import issue_state
 from ai_social_content_generator.instagram.token_store import get_token
+from ai_social_content_generator.facebook.oauth import (
+    build_authorize_url as fb_build_authorize_url,
+)
+from ai_social_content_generator.facebook.token_store import get_fb_token
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import (
+    get_autopost,
     get_reminder_schedule,
     load_user,
     save_user,
+    set_autopost,
     set_reminder_schedule,
 )
 from ai_social_content_generator.telegram_bot.scheduler import (
@@ -45,6 +51,7 @@ async def settings_submenu_show(
         [InlineKeyboardButton("✏️ Edit niche", callback_data="settings_edit_niche")],
         [InlineKeyboardButton(scheduler_label, callback_data="settings_scheduler")],
         [InlineKeyboardButton("🎨 Carousel settings", callback_data="settings_customize")],
+        [InlineKeyboardButton("📤 Autopost settings", callback_data="autopost_settings")],
         [InlineKeyboardButton(ig_label, callback_data="settings_connect_ig")],
         [InlineKeyboardButton("← Back", callback_data="settings_back")],
     ]
@@ -563,3 +570,135 @@ async def receive_carousel_instructions(
     await update.message.reply_text(
         "✅ Saved. Your next carousels will follow these."
     )
+
+
+# ----------------------------------------------------------------------
+# Autopost settings: per-platform toggles (Instagram / Facebook).
+# ----------------------------------------------------------------------
+
+_PLATFORM_DISPLAY = {"instagram": "Instagram", "facebook": "Facebook"}
+
+
+@require_auth
+async def autopost_settings_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Show the two platform toggles + connection state, plus connect
+    entries for any platform not yet connected."""
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+
+    ap = get_autopost(load_user(user_id))
+    ig_conn = get_token(user_id) is not None
+    fb_conn = get_fb_token(user_id) is not None
+
+    def _label(emoji: str, name: str, on: bool, conn: bool) -> str:
+        state = "ON ✅" if on else "OFF"
+        suffix = "" if conn else " (not connected)"
+        return f"{emoji} {name}: {state}{suffix}"
+
+    keyboard = [
+        [InlineKeyboardButton(
+            _label("📷", "Instagram", ap["instagram"], ig_conn),
+            callback_data="autopost_toggle_ig",
+        )],
+        [InlineKeyboardButton(
+            _label("📘", "Facebook", ap["facebook"], fb_conn),
+            callback_data="autopost_toggle_fb",
+        )],
+    ]
+    if not ig_conn:
+        keyboard.append([InlineKeyboardButton(
+            "🔗 Connect Instagram", callback_data="settings_connect_ig",
+        )])
+    if not fb_conn:
+        keyboard.append([InlineKeyboardButton(
+            "🔗 Connect Facebook", callback_data="connect_facebook",
+        )])
+    keyboard.append([InlineKeyboardButton("← Back", callback_data="main_settings")])
+
+    text = (
+        "📤 Autopost settings\n\n"
+        "Choose where your carousels publish. A platform must be connected "
+        "before you can turn it on. Both can be on at once; if one fails, the "
+        "other still posts."
+    )
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+@require_auth
+async def autopost_toggle_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Flip one platform toggle. Refuses to enable a platform that has no
+    stored token (guides the user to connect first)."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    platform = "instagram" if query.data == "autopost_toggle_ig" else "facebook"
+
+    user_data = load_user(user_id)
+    if user_data is None:
+        await query.answer("No account info. Please /start first.", show_alert=True)
+        return
+
+    ap = get_autopost(user_data)
+    connected = (
+        get_token(user_id) is not None if platform == "instagram"
+        else get_fb_token(user_id) is not None
+    )
+
+    if not ap[platform] and not connected:
+        await query.answer(
+            f"Connect {_PLATFORM_DISPLAY[platform]} first.", show_alert=True,
+        )
+        await autopost_settings_show(update, context)
+        return
+
+    set_autopost(user_data, platform, not ap[platform])
+    save_user(user_id, user_data)
+    await autopost_settings_show(update, context)
+
+
+@require_auth
+async def facebook_connect_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Connect-Facebook screen. Mirrors instagram_connect_show: mint a
+    single-use state, build the FB authorize URL, present it as a button."""
+    user_id = update.effective_user.id
+    query = update.callback_query
+    await query.answer()
+    already = get_fb_token(user_id)
+
+    try:
+        state = issue_state(user_id)
+        authorize_url = fb_build_authorize_url(state)
+    except Exception:
+        logger.exception("Failed to build Facebook authorize URL for user_id=%s", user_id)
+        await query.edit_message_text(
+            "Facebook isn't configured on this bot yet. Check back later.",
+        )
+        return
+
+    if already:
+        page = already.get("page_name") or already.get("page_id", "unknown")
+        text = (
+            "📘 Facebook is connected.\n\n"
+            f"Page: {page}\n\n"
+            "Tap below to reconnect (e.g. to switch Page)."
+        )
+        button_label = "🔄 Reconnect Facebook"
+    else:
+        text = (
+            "📘 Connect your Facebook Page.\n\n"
+            "Tap below, approve the app and grant Page access, and you'll be "
+            "sent back to a confirmation page. Return here when done."
+        )
+        button_label = "Open Facebook authorize page"
+
+    keyboard = [
+        [InlineKeyboardButton(button_label, url=authorize_url)],
+        [InlineKeyboardButton("← Back", callback_data="autopost_settings")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))

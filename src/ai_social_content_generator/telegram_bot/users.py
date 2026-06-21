@@ -157,6 +157,27 @@ def get_reminder_schedule(user_data: dict) -> dict:
     )
 
 
+def get_autopost(user_data: dict | None) -> dict:
+    """Return {"instagram": bool, "facebook": bool}. Absent toggles default
+    to instagram=True (today's implicit behavior) and facebook=False, so a
+    user who never touches Autopost settings keeps posting to IG only."""
+    ap = (user_data or {}).get("autopost") or {}
+    return {
+        "instagram": bool(ap.get("instagram", True)),
+        "facebook": bool(ap.get("facebook", False)),
+    }
+
+
+def set_autopost(user_data: dict, platform: str, enabled: bool) -> dict:
+    """Flip one platform's toggle, materializing both keys with their
+    defaults first so the stored block is always complete."""
+    ap = user_data.setdefault("autopost", {})
+    ap.setdefault("instagram", True)
+    ap.setdefault("facebook", False)
+    ap[platform] = bool(enabled)
+    return ap
+
+
 def iter_all_users() -> list[tuple[int, dict]]:
     """Returns (user_id_int, user_data_dict) tuples for every user file.
     Used by the scheduler on startup to rebuild jobs."""

@@ -48,6 +48,9 @@ from ai_social_content_generator.telegram_bot.actions.settings import (
     carousel_instructions_show,
     carousel_instr_edit,
     carousel_instr_clear,
+    autopost_settings_show,
+    autopost_toggle_route,
+    facebook_connect_show,
 )
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
@@ -283,6 +286,21 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             carousel_instr_clear, pattern=r"^carousel_instr_clear$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            autopost_settings_show, pattern=r"^autopost_settings$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            autopost_toggle_route, pattern=r"^autopost_toggle_(ig|fb)$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            facebook_connect_show, pattern=r"^connect_facebook$"
         )
     )
     application.add_handler(
