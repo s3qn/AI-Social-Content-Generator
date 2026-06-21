@@ -15,6 +15,7 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
+from ai_social_content_generator.telegram_bot.ui import cancel_markup, typing_action
 from ai_social_content_generator.telegram_bot.users import (
     get_autopost,
     load_user,
@@ -162,7 +163,8 @@ async def compose_carousel_from_picked(
         custom if custom else "(none provided; use your default judgment)",
     )
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 
@@ -474,6 +476,7 @@ async def carousel_edit_slide_route(
             "Tip: keep or move the *stars* to control which words are "
             "highlighted in the image."
         ),
+        reply_markup=cancel_markup(),
     )
     await context.bot.send_message(
         chat_id=chat_id,
@@ -679,6 +682,7 @@ async def slide_add_route(
             "tap to copy, edit it, and send it back. Keep or move the "
             "*stars* to highlight words."
         ),
+        reply_markup=cancel_markup(),
     )
     await context.bot.send_message(
         chat_id=chat_id,
@@ -1079,6 +1083,7 @@ async def carousel_schedule_route(
             "(format: DD/MM/YYYY HH:MM, Israel time).\n\n"
             "Example: 25/06/2026 09:00"
         ),
+        reply_markup=cancel_markup(),
     )
 
 

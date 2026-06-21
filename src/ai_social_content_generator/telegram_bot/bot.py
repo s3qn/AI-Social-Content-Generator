@@ -60,6 +60,7 @@ from ai_social_content_generator.telegram_bot.actions.scheduled_posts import (
     scheduled_cancel_route,
     rebuild_scheduled_posts_on_startup,
 )
+from ai_social_content_generator.telegram_bot.ui import cancel_input_route
 from ai_social_content_generator.instagram.callback_server import (
     start_callback_server,
 )
@@ -175,6 +176,10 @@ if __name__ == '__main__':
 
     analyze_handler = CommandHandler('analyze', profile_analyzer)
     message_handle = MessageHandler(filters.TEXT & ~filters.COMMAND, message_bot)
+    application.add_handler(
+        CallbackQueryHandler(cancel_input_route, pattern=r"^cancel_input$")
+    )
+
     menu_analyze = CallbackQueryHandler(main_menu_route, pattern=r"^(menu_|viral_menu$|main_settings$)")
 
     application.add_handler(message_handle)

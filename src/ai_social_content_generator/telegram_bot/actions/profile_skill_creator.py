@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.telegram_bot.users import load_user
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -41,7 +42,8 @@ async def _run_analysis(
     else:
         prompt = build_prompt_with_bio(handle, profile_data, engagement_digest)
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
 
     if not raw_output:

@@ -8,6 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
+from ai_social_content_generator.telegram_bot.ui import CANCEL_BUTTON, cancel_markup
 from ai_social_content_generator.telegram_bot.users import (
     MAX_VIRAL_KEYWORDS,
     add_topic,
@@ -17,6 +18,7 @@ from ai_social_content_generator.telegram_bot.users import (
     save_user,
 )
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.ingestion.instagram_scraper import (
     build_viral_excel,
     invalidate_viral_cache,
@@ -161,7 +163,8 @@ async def viral_submenu_route(
         context.user_data["awaiting_viral_keyword"] = True
         await query.edit_message_text(
             "Send the keyword you want to research (Hebrew or English).\n\n"
-            "Examples: 'זוגיות עסקית', 'couples in business', 'marriage and money'"
+            "Examples: 'זוגיות עסקית', 'couples in business', 'marriage and money'",
+            reply_markup=cancel_markup(),
         )
     elif query.data == "viral_remove":
         await viral_remove_show(update, context)
@@ -332,9 +335,10 @@ async def viral_generate_report(
     )
 
     try:
-        results = await asyncio.to_thread(
-            scrape_and_process_viral_keywords, kw_texts, False
-        )
+        async with typing_action(context.bot, chat_id):
+            results = await asyncio.to_thread(
+                scrape_and_process_viral_keywords, kw_texts, False
+            )
     except Exception:
         logger.exception("Viral pipeline failed for keywords=%r", kw_texts)
         await context.bot.send_message(
@@ -415,7 +419,8 @@ async def viral_excel_route(
 
     output_path = viral_excel_path(user_id)
     try:
-        await asyncio.to_thread(build_viral_excel, results, output_path)
+        async with typing_action(context.bot, chat_id):
+            await asyncio.to_thread(build_viral_excel, results, output_path)
     except Exception:
         logger.exception("Viral Excel build failed for user_id=%s", user_id)
         await context.bot.send_message(
@@ -466,21 +471,24 @@ async def _show_import_prompt(
             parse_mode="MarkdownV2",
         )
 
+    rows: list[list[InlineKeyboardButton]] = []
     if VIRAL_TOPIC_MIN_LEN <= len(text) <= VIRAL_TOPIC_MAX_LEN:
-        markup = InlineKeyboardMarkup([[
+        rows.append([
             InlineKeyboardButton("💾 Keep as-is", callback_data="viral_keep_asis")
-        ]])
+        ])
         prompt = "Send the topic as you want it stored, or keep this text as-is:"
     else:
         # Hashtag-soup captions >200 chars (or empty) can't go in the
         # vault verbatim — require an edited version for a clean vault.
-        markup = None
         prompt = (
             f"This text is {len(text)} characters "
             f"(topics are {VIRAL_TOPIC_MIN_LEN}-{VIRAL_TOPIC_MAX_LEN}). "
             f"Send the topic as you want it stored:"
         )
-    await context.bot.send_message(chat_id=chat_id, text=prompt, reply_markup=markup)
+    rows.append([CANCEL_BUTTON])
+    await context.bot.send_message(
+        chat_id=chat_id, text=prompt, reply_markup=InlineKeyboardMarkup(rows),
+    )
 
 
 @require_auth
@@ -678,9 +686,10 @@ async def _ensure_transcript(
         )
         # MUST be to_thread: this runs in a callback handler; ~22s of
         # Whisper CPU on the event loop would freeze the bot for everyone.
-        result = await asyncio.to_thread(
-            transcribe_local_segments, Path(local_video)
-        )
+        async with typing_action(context.bot, chat_id):
+            result = await asyncio.to_thread(
+                transcribe_local_segments, Path(local_video)
+            )
     finally:
         in_flight.discard(pk)
 
@@ -820,10 +829,11 @@ async def viral_format_route(
     pk = r.get("pk") or str(idx)
     frames_dir = VIRAL_FRAMES_DIR / pk
     if local_video and Path(local_video).exists():
-        frames = await asyncio.to_thread(
-            extract_frames, Path(local_video), frames_dir, 6,
-            duration if duration else None,
-        )
+        async with typing_action(context.bot, chat_id):
+            frames = await asyncio.to_thread(
+                extract_frames, Path(local_video), frames_dir, 6,
+                duration if duration else None,
+            )
 
     # Thin-input pre-check: nothing to analyze at all.
     if not transcript and not frames:
@@ -939,7 +949,8 @@ async def viral_hooks_route(
         voice_str=voice_str,
     )
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, chat_id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", "") or ""
     returncode = getattr(claude_reply, "returncode", -1)
 

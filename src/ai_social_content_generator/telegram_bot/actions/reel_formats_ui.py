@@ -22,8 +22,10 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
+from ai_social_content_generator.telegram_bot.ui import cancel_markup
 from ai_social_content_generator.telegram_bot.users import load_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.reel_formats import (
     custom_format_path,
     get_reel_formats,
@@ -143,6 +145,7 @@ async def reel_format_add_start(
     await context.bot.send_message(
         chat_id=chat_id,
         text="Name this format (short, e.g. 'Story flip'):",
+        reply_markup=cancel_markup(),
     )
 
 
@@ -161,7 +164,8 @@ async def format_name_receive(
     context.user_data["awaiting_format_desc"] = True
     await update.message.reply_text(
         "Describe the format: structure, tone, what happens start to finish. "
-        "The more specific, the better."
+        "The more specific, the better.",
+        reply_markup=cancel_markup(),
     )
 
 
@@ -237,7 +241,8 @@ async def run_format_preview(
 
     template = None
     for attempt in range(1, MAX_TEMPLATE_ATTEMPTS + 1):
-        status, candidate = await generate()
+        async with typing_action(context.bot, chat_id):
+            status, candidate = await generate()
         if status == "insufficient":
             context.user_data.pop("pending_format", None)
             await context.bot.send_message(
@@ -296,7 +301,8 @@ async def _preview_and_offer(
     ctx = _build_sample_context(user_id)
     sample_text = None
     if ctx is not None:
-        reply = await message_claude(template.format(**ctx))
+        async with typing_action(context.bot, chat_id):
+            reply = await message_claude(template.format(**ctx))
         raw = getattr(reply, "stdout", None)
         rc = getattr(reply, "returncode", -1)
         if reply is not None and rc == 0 and raw:

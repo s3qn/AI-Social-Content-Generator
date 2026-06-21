@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.users import load_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import (
     build_engagement_digest,
 )
@@ -100,7 +101,8 @@ async def compose_reel_from_picked(
         chosen_headline=chosen_headline,
     )
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 
@@ -252,7 +254,8 @@ async def convert_carousel_to_reel(
         source_caption=source_caption,
     )
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 

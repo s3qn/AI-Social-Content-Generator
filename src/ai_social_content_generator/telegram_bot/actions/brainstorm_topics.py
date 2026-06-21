@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import load_user, save_user, add_topic
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import build_competitor_section
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
 
@@ -103,7 +104,8 @@ async def brainstorm_topics_from_vault(update: Update, context: ContextTypes.DEF
     skill_template = SKILL_PATH.read_text(encoding="utf-8")
     prompt = skill_template.format(**ctx)
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 
@@ -261,7 +263,8 @@ async def brainstorm_own_process(
     template = EXPAND_PATH.read_text(encoding="utf-8")
     prompt = template.format(idea=idea, **base_ctx)
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 

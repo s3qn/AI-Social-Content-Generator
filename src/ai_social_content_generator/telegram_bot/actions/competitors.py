@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from ai_social_content_generator.telegram_bot.auth import require_auth
 from ai_social_content_generator.telegram_bot.users import load_user, save_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import (
     build_prompt_with_bio,
     build_engagement_digest,
@@ -99,7 +100,8 @@ async def competitor_receive_handle(update: Update, context: ContextTypes.DEFAUL
     engagement_digest = build_engagement_digest(posts_list, top_n=3)
     prompt = build_prompt_with_bio(handle, profile_data, engagement_digest)
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)
 

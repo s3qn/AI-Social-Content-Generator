@@ -12,6 +12,7 @@ from ai_social_content_generator.facebook.oauth import (
 )
 from ai_social_content_generator.facebook.token_store import get_fb_token
 from ai_social_content_generator.telegram_bot.auth import require_auth
+from ai_social_content_generator.telegram_bot.ui import cancel_markup
 from ai_social_content_generator.telegram_bot.users import (
     get_autopost,
     get_reminder_schedule,
@@ -143,7 +144,8 @@ async def customize_submenu_route(
             "1. No text on the image — no title, subtitle, or handle. The bot adds all text.\n"
             "2. Portrait 4:5 (1080×1350) works best.\n"
             "3. Leave a calm area (top or middle) for the text to sit.\n\n"
-            "Send the photo now, or tap /cancel."
+            "Send the photo now, or tap ✖ Cancel below.",
+            reply_markup=cancel_markup(),
         )
     elif query.data == "customize_logo":
         context.user_data["awaiting_logo_upload"] = True
@@ -152,7 +154,8 @@ async def customize_submenu_route(
             "sending as a photo flattens transparency.\n\n"
             "Use a transparent PNG, roughly square. It will appear on the hook "
             "and final slides in place of the default motif.\n\n"
-            "Send the file now, or tap /cancel."
+            "Send the file now, or tap ✖ Cancel below.",
+            reply_markup=cancel_markup(),
         )
     elif query.data == "customize_rerender":
         # Render logic lives in compose_carousel; settings just routes here.
@@ -515,7 +518,8 @@ async def carousel_instr_edit(
         "✍️ Send your instructions for carousels (tone, style, what to avoid).\n\n"
         "They're added on top of the existing system, which keeps the post "
         f"format and rules intact. Keep it under {CAROUSEL_INSTRUCTIONS_MAX} "
-        "characters."
+        "characters.",
+        reply_markup=cancel_markup(),
     )
 
 

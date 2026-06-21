@@ -7,6 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
+from ai_social_content_generator.telegram_bot.ui import cancel_markup
 from ai_social_content_generator.telegram_bot.users import (
     add_headlines_to_topic,
     heal_duplicate_topic_ids,
@@ -15,6 +16,7 @@ from ai_social_content_generator.telegram_bot.users import (
     save_user,
 )
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
+from ai_social_content_generator.telegram_bot.ui import typing_action
 from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     build_competitor_section,
     compose_carousel_from_picked,
@@ -229,7 +231,8 @@ async def headline_mode_route(
         context.user_data["awaiting_custom_headline"] = True
         await query.edit_message_text(
             f"✍️ Type your headline (the hook for this {content_type}). "
-            "It will be used as-is."
+            "It will be used as-is.",
+            reply_markup=cancel_markup(),
         )
 
 
@@ -327,7 +330,8 @@ async def headline_picker_generate(
         previous_headlines_section=previous_headlines_section,
     )
 
-    claude_reply = await message_claude(prompt)
+    async with typing_action(context.bot, update.effective_chat.id):
+        claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", "") or ""
     returncode = getattr(claude_reply, "returncode", -1)
 
