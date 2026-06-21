@@ -9,13 +9,14 @@ You don't need to know anything technical. You just tap buttons and answer simpl
 questions, and she does the heavy lifting.
 
 > **A quick word on what you get**
-> - **Carousels** come out as real, ready images you can post, and the bot can even
->   publish them straight to Instagram for you.
+> - **Carousels** come out as real, ready images you can post. The bot can publish them
+>   for you, to Instagram and/or a Facebook Page (you choose which).
 > - **Reels** come out as a written **script**: the hook, what to say or put on screen,
 >   and a caption with hashtags. You film and edit the actual video yourself. (For now!)
 
 **How to open the menu:** just type any message (like "hi") in the chat, and the menu
-appears.
+appears. The main menu has your main actions, plus **📅 Scheduled posts** and
+**⚙️ Settings**.
 
 <img src="images/01-main-menu.jpg" alt="Main menu" width="320">
 
@@ -28,15 +29,19 @@ appears.
 3. [Come up with post ideas](#3-come-up-with-post-ideas)
 4. [Make a carousel post](#4-make-a-carousel-post)
 5. [Edit your carousel](#5-edit-your-carousel)
-6. [Publish a carousel to Instagram](#6-publish-a-carousel-to-instagram)
-7. [Make a reel](#7-make-a-reel)
-8. [Turn a carousel into a reel](#8-turn-a-carousel-into-a-reel)
-9. [Build your own reel format](#9-build-your-own-reel-format)
-10. [Find trending content (Viral posts)](#10-find-trending-content-viral-posts)
-11. [Track competitors](#11-track-competitors)
-12. [Change your background or logo](#12-change-your-background-or-logo)
-13. [Get a daily idea reminder](#13-get-a-daily-idea-reminder)
-14. [Connect your Instagram account](#14-connect-your-instagram-account)
+6. [Publish a carousel now](#6-publish-a-carousel-now)
+7. [Schedule a post for later](#7-schedule-a-post-for-later)
+8. [Make a reel](#8-make-a-reel)
+9. [Turn a carousel into a reel](#9-turn-a-carousel-into-a-reel)
+10. [Build your own reel format](#10-build-your-own-reel-format)
+11. [Find trending content (Viral posts)](#11-find-trending-content-viral-posts)
+12. [Track competitors](#12-track-competitors)
+13. [Change your background or logo](#13-change-your-background-or-logo)
+14. [Add your own style instructions](#14-add-your-own-style-instructions)
+15. [Get a daily idea reminder](#15-get-a-daily-idea-reminder)
+16. [Connect your Instagram account](#16-connect-your-instagram-account)
+17. [Connect a Facebook Page](#17-connect-a-facebook-page)
+18. [Choose where your posts go (Autopost settings)](#18-choose-where-your-posts-go-autopost-settings)
 
 ---
 
@@ -162,23 +167,71 @@ Right under the carousel preview, you have editing tools.
 
 ---
 
-## 6. Publish a carousel to Instagram
+## 6. Publish a carousel now
 
-You can post your carousel straight to Instagram from the bot. (You need to connect
-Instagram first; see [section 14](#14-connect-your-instagram-account).)
+You can post your carousel straight from the bot. It goes to whichever platforms you've
+turned on in Autopost settings (Instagram and/or a Facebook Page). So connect at least
+one platform first and turn it on (see [section 18](#18-choose-where-your-posts-go-autopost-settings)).
 
 1. Under your carousel preview, tap **📤 Upload to Instagram**.
-2. Stella shows a preview of how the post will look, with your caption and hashtags.
-3. If it looks good, tap **✅ Looks good, publish**.
-4. She posts it and sends you the link. Done!
+2. Stella asks: post now, or schedule it for later? Tap **📤 Post now**.
+3. She shows a preview of how the post will look, with your caption and hashtags.
+4. If it looks good, tap **✅ Looks good, publish**.
+5. She posts it and tells you how each platform went, with a link.
 
 To stop, tap **❌ Cancel**: nothing gets posted.
 
-<img src="images/07-publish-preview.jpg" alt="Instagram post preview" width="320">
+[SCREENSHOT: the "Post now / Schedule for later" choice after tapping Upload to Instagram]
+
+<img src="images/07-publish-preview.jpg" alt="Post preview" width="320">
+
+> **If you have both platforms on:** the carousel goes to both. If one of them fails
+> (say a connection dropped), the other still posts, and Stella tells you which worked.
 
 ---
 
-## 7. Make a reel
+## 7. Schedule a post for later
+
+You can set a carousel to publish automatically at a date and time you choose. Nobody
+has to tap anything when the time comes. This is how you line up a whole week of content
+in one sitting.
+
+> **Before you schedule:** you need Instagram connected (see
+> [section 16](#16-connect-your-instagram-account)), even if you only want it on
+> Facebook. If Instagram isn't connected, Stella will ask you to connect it first.
+
+### Schedule one post
+
+1. Make a carousel and generate its images (see [section 4](#4-make-a-carousel-post)).
+2. Tap **📤 Upload to Instagram**, then **📅 Schedule for later**.
+3. Send the date and time in this format: **DD/MM/YYYY HH:MM** (Israel time).
+   For example: `25/06/2026 09:00`.
+4. Stella confirms with **📅 Scheduled for …** and saves it.
+
+At that time, the carousel publishes on its own, to whichever platforms are turned on in
+your Autopost settings (the same Instagram/Facebook switches). Stella messages you when
+it's done.
+
+[SCREENSHOT: the schedule prompt asking for the date and time]
+
+### Plan a week ahead
+
+Repeat the steps above for each post, picking a different day or time for each one. They
+all wait their turn and post automatically.
+
+### See or cancel your scheduled posts
+
+1. Open the menu and tap **📅 Scheduled posts**.
+2. You'll see each waiting post with its date and time.
+3. To remove one, tap **🗑 Cancel** next to it. It won't post.
+
+If you have none waiting, it simply says **📅 No scheduled posts**.
+
+[SCREENSHOT: the Scheduled posts list with a Cancel button next to each post]
+
+---
+
+## 8. Make a reel
 
 A reel here comes out as a **written script** you can film: the hook, what to say or
 show, and a caption.
@@ -189,7 +242,7 @@ show, and a caption.
    - **🎤 Talking head**: you speak to the camera. More personal, more effort.
    - **📝 Text overlay**: viewers read text over simple background video. No speaking.
      Low effort.
-   - (Any custom formats you've built appear here too; see [section 9](#9-build-your-own-reel-format).)
+   - (Any custom formats you've built appear here too; see [section 10](#10-build-your-own-reel-format).)
 4. Pick an idea by tapping its number.
 5. Choose your hook (same as the carousel: **🤖 Generate with AI** or **✍️ Write your own**).
 6. Stella writes your reel script and sends it to you.
@@ -198,7 +251,7 @@ show, and a caption.
 
 ---
 
-## 8. Turn a carousel into a reel
+## 9. Turn a carousel into a reel
 
 Already made a carousel and want the *same content* as a reel too? You don't have to
 start over.
@@ -213,7 +266,7 @@ start over.
 
 ---
 
-## 9. Build your own reel format
+## 10. Build your own reel format
 
 The bot comes with two reel styles, but you can teach it your own. This is handy when:
 
@@ -239,7 +292,7 @@ Saved formats then appear as a choice every time you make a reel.
 
 ### Build a format from a viral reel
 
-See [section 10](#10-find-trending-content-viral-posts): when viewing a trending reel,
+See [section 11](#11-find-trending-content-viral-posts): when viewing a trending reel,
 tap **🧬 Build format from this**, and Stella studies that reel and turns its style into
 a reusable format for you.
 
@@ -247,7 +300,7 @@ a reusable format for you.
 
 ---
 
-## 10. Find trending content (Viral posts)
+## 11. Find trending content (Viral posts)
 
 This is where you go hunting for fresh ideas and trends. You give Stella keywords, and
 she finds reels across Instagram that are doing well on those topics, so you can mine
@@ -285,7 +338,7 @@ Tap a reel's number to open its full card. From there you can:
   adapted to *your* niche and voice. Tap a number to save one.
 - **🎤 Full transcript**: read everything that's said in the reel.
 - **🧬 Build format from this**: turn the reel's style into your own reusable reel
-  format (see [section 9](#9-build-your-own-reel-format)).
+  format (see [section 10](#10-build-your-own-reel-format)).
 
 <img src="images/10b-viral-reel-card.jpg" alt="A viral reel's full card" width="320">
 
@@ -303,7 +356,7 @@ pulls brand-new reels.
 
 ---
 
-## 11. Track competitors
+## 12. Track competitors
 
 Competitors are specific accounts in your niche that you want Stella to **learn from**.
 Once you add them, their best-performing posts quietly shape the *style and structure*
@@ -329,13 +382,14 @@ keeps your topics and your voice (the substance).
 
 ---
 
-## 12. Change your background or logo
+## 13. Change your background or logo
 
 You can give your carousels your own look: your own background image and your own logo.
+Both live under **🎨 Carousel settings**.
 
 ### Set a background image
 
-1. Open the menu → **⚙️ Settings** → **🎨 Customize carousel**.
+1. Open the menu → **⚙️ Settings** → **🎨 Carousel settings**.
 2. Tap **🖼 Background**.
 3. Send a photo to use as the background.
 
@@ -348,7 +402,7 @@ Stella saves it and shows you a quick preview slide so you can check the text lo
 
 ### Set a logo
 
-1. In **🎨 Customize carousel**, tap **🏷 Logo**.
+1. In **🎨 Carousel settings**, tap **🏷 Logo**.
 2. Send your logo **as a file** (use the paperclip → File), **not** as a photo. Sending
    it as a photo removes the transparency.
 3. Use a transparent PNG, roughly square. It appears on your first and last slides.
@@ -359,11 +413,36 @@ If you just changed your background or logo and want your current carousel updat
 match, tap **🔄 Re-render current carousel**. Stella re-makes the images with your new
 styling (no need to write the carousel again).
 
-<img src="images/12-customize-menu.jpg" alt="Customize carousel menu" width="320">
+<img src="images/12-customize-menu.jpg" alt="Carousel settings menu" width="320">
 
 ---
 
-## 13. Get a daily idea reminder
+## 14. Add your own style instructions
+
+You can tell Stella how you like your carousels written: the tone, the angle, words or
+habits to avoid. She'll follow your notes on every carousel from then on. This guides the
+**tone and style** only. The post format (the slides, the hook, the caption, the
+highlights) stays exactly as it should.
+
+### Set your instructions
+
+1. Open the menu → **⚙️ Settings** → **🎨 Carousel settings** → **✍️ My instructions**.
+2. You'll see your current instructions, or "None set yet."
+3. Tap **✏️ Set / edit**.
+4. Type your guidance and send it. For example:
+   "Punchy, warm tone. No rhetorical questions as the hook. Avoid the word journey."
+5. Stella saves it and confirms. Your next carousels follow it.
+
+### Clear your instructions
+
+1. Open **✍️ My instructions** again.
+2. Tap **🗑 Clear**. Carousels go back to the default style.
+
+[SCREENSHOT: My instructions screen with Set / edit and Clear]
+
+---
+
+## 15. Get a daily idea reminder
 
 Stella can nudge you once a day with a few post ideas to choose from, so you never sit
 down to a blank page.
@@ -386,12 +465,12 @@ This is the daily **Morning Ideas** message you'll receive:
 
 ---
 
-## 14. Connect your Instagram account
+## 16. Connect your Instagram account
 
 Connect Instagram once so the bot can publish carousels for you.
 
 1. Open the menu → **⚙️ Settings**.
-2. Tap **📷 Connect Instagram**.
+2. Tap **📷 Connect Instagram**. (You can also reach this from **📤 Autopost settings**.)
 3. Tap the button to open the Instagram authorization page.
 4. Approve the app on Instagram, then come back to the chat.
 
@@ -399,6 +478,51 @@ Once connected, the Settings button shows **📷 Instagram (connected)**. If you
 accounts, open it again and tap **🔄 Reconnect Instagram**.
 
 <img src="images/14-connect-instagram.jpg" alt="Connect Instagram" width="320">
+
+---
+
+## 17. Connect a Facebook Page
+
+The bot can also publish your carousels to **a Facebook Page**. Note: it posts to a
+**Page**, not your personal Facebook profile, and you need to be an **admin** of that
+Page.
+
+1. Open the menu → **⚙️ Settings** → **📤 Autopost settings**.
+2. Tap **🔗 Connect Facebook**.
+3. Tap **Open Facebook authorize page**.
+4. Approve the app and grant access to your Page, then come back to the chat.
+
+If you manage more than one Page, the bot connects one of them and tells you which one on
+the confirmation screen. If that's not the Page you wanted, just connect again to switch.
+
+Once connected, you can turn Facebook on (see the next section). To switch Pages later,
+open **🔗 Connect Facebook** again and tap **🔄 Reconnect Facebook**.
+
+[SCREENSHOT: the Connect Facebook screen with the authorize button]
+
+---
+
+## 18. Choose where your posts go (Autopost settings)
+
+This is where you decide which platforms your carousels publish to. You have two
+switches: Instagram and Facebook. Each one is either on or off.
+
+1. Open the menu → **⚙️ Settings** → **📤 Autopost settings**.
+2. You'll see:
+   - **📷 Instagram: ON / OFF**
+   - **📘 Facebook: ON / OFF**
+3. Tap a platform to turn it on or off.
+
+A few simple rules:
+- **A platform must be connected before you can turn it on.** If you tap a platform on
+  while it isn't connected, Stella reminds you to connect it first (a connect button is
+  right there on this screen).
+- When you publish (now or scheduled), your carousel goes to **every platform that's on**.
+- If one platform fails, the other still posts, and Stella tells you which worked.
+- By default, Instagram is on and Facebook is off. So nothing changes until you flip a
+  switch.
+
+[SCREENSHOT: Autopost settings showing the two toggles]
 
 ---
 
