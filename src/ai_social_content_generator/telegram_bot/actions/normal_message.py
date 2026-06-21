@@ -63,6 +63,13 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if context.user_data.get("awaiting_schedule_time"):
+        from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
+            receive_schedule_time,
+        )
+        await receive_schedule_time(update, context)
+        return
+
     if context.user_data.get("awaiting_custom_headline"):
         headline = (update.message.text or "").strip()
         if not headline or len(headline) > 200:

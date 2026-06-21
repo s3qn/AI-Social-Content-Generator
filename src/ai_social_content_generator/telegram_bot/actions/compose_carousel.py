@@ -1,6 +1,8 @@
 import json
 import logging
 import re
+import shutil
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -13,7 +15,7 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from ai_social_content_generator.telegram_bot.auth import require_auth
-from ai_social_content_generator.telegram_bot.users import load_user
+from ai_social_content_generator.telegram_bot.users import load_user, save_user
 from ai_social_content_generator.telegram_bot.call_claude import message_claude
 from ai_social_content_generator.telegram_bot.actions.profile_skill_creator import build_engagement_digest
 from ai_social_content_generator.instagram.publish import PublishError, publish_carousel
@@ -29,6 +31,16 @@ from ai_social_content_generator.render.publish_staging import (
     StagingError,
     cleanup_staged,
     stage_for_publish,
+)
+from ai_social_content_generator.telegram_bot.actions.scheduled_posts import (
+    SCHEDULE_MAX_DAYS,
+    SCHEDULE_TZ,
+    SCHEDULED_DIR,
+    add_scheduled_post,
+    format_ts,
+    new_post_id,
+    parse_schedule_input,
+    schedule_post_job,
 )
 
 logger = logging.getLogger(__name__)
@@ -706,9 +718,37 @@ async def carousel_individual_route(
 async def carousel_publish_route(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Phase 1: render a mock IG post (first slide + handle + full caption +
-    hashtags) and send Confirm/Cancel buttons. No real publishing yet, and
-    no public staging — Phase 3 will own both. Failures degrade gracefully:
+    """Upload-to-Instagram tap: offer Post now vs Schedule for later. Both
+    paths need a current render in session, so guard here once."""
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+
+    render_data = context.user_data.get("last_render")
+    carousel_data = context.user_data.get("last_carousel")
+    if not render_data or not render_data.get("paths") or not carousel_data:
+        await query.answer("Generate images first.", show_alert=True)
+        return
+    await query.answer()
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 Post now", callback_data="gen_carousel_postnow")],
+        [InlineKeyboardButton(
+            "📅 Schedule for later", callback_data="gen_carousel_schedule"
+        )],
+    ])
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Post now, or schedule it for later?",
+        reply_markup=kb,
+    )
+
+
+@require_auth
+async def carousel_postnow_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Render a mock IG post (first slide + handle + full caption +
+    hashtags) and send Confirm/Cancel buttons. Failures degrade gracefully:
     the rendered carousel above stays intact."""
     query = update.callback_query
     user_id = update.effective_user.id
@@ -778,14 +818,74 @@ async def carousel_publish_route(
         )
 
 
+async def _publish_carousel_from_data(
+    *,
+    user_id: int,
+    slide_paths: list[Path],
+    caption: str,
+    hashtags: str,
+    ig_account_id: str,
+    token: str,
+) -> dict:
+    """Stage → publish_carousel → permalink → cleanup. Session-free: takes
+    explicit args, reads NO context.user_data. Both the live confirm path
+    and the scheduled job call this.
+
+    Returns {"ok": True, "permalink": str|None, "media_id": ...} on success
+    or {"ok": False, "error": "staging"|"auth"|"publish"|"unexpected"} on
+    failure. On an auth failure the (now-invalid) token is cleared here so
+    both callers behave identically; each caller does its own notifying."""
+    caption_full = f"{(caption or '').strip()}\n\n{(hashtags or '').strip()}".strip()
+    staged_paths: list[Path] = []
+    try:
+        try:
+            staged = stage_for_publish(slide_paths)
+            image_urls = [u for u, _ in staged]
+            staged_paths = [p for _, p in staged]
+        except StagingError:
+            logger.exception("Staging failed for user_id=%s", user_id)
+            return {"ok": False, "error": "staging"}
+
+        try:
+            result = await publish_carousel(
+                ig_id=str(ig_account_id),
+                image_urls=image_urls,
+                caption=caption_full,
+                token=token,
+            )
+            logger.info(
+                "IG publish OK user_id=%s media_id=%s",
+                user_id, result.get("media_id"),
+            )
+            return {
+                "ok": True,
+                "permalink": result.get("permalink"),
+                "media_id": result.get("media_id"),
+            }
+        except PublishError as e:
+            if e.auth_failed:
+                clear_token(user_id)
+                logger.warning(
+                    "IG publish auth failed user_id=%s, cleared token: %s",
+                    user_id, e,
+                )
+                return {"ok": False, "error": "auth"}
+            logger.warning("IG publish failed user_id=%s: %s", user_id, e)
+            return {"ok": False, "error": "publish"}
+        except Exception:
+            logger.exception("Unexpected IG publish error user_id=%s", user_id)
+            return {"ok": False, "error": "unexpected"}
+    finally:
+        cleanup_staged(staged_paths)
+
+
 @require_auth
 async def carousel_confirm_route(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Real publish. Token-gate → stage slides to the public folder →
-    run the IG carousel publish flow → message the user with a permalink.
-    Cleanup always runs in finally so the public folder doesn't leak
-    files on failure."""
+    """Live publish. Token-gate, gather from session, then hand off to the
+    session-free publisher and map its result to the same user messages as
+    before."""
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
@@ -815,10 +915,6 @@ async def carousel_confirm_route(
         )
         return
 
-    caption = (carousel_data.get("caption") or "").strip()
-    hashtags = (carousel_data.get("hashtags") or "").strip()
-    caption_full = f"{caption}\n\n{hashtags}".strip()
-
     try:
         await query.edit_message_caption(caption="📤 Publishing to Instagram…")
     except Exception:
@@ -826,63 +922,34 @@ async def carousel_confirm_route(
         pass
 
     slide_paths = [Path(p) for p in render_data["paths"]]
-    staged_paths: list[Path] = []
-    try:
-        staged = stage_for_publish(slide_paths)
-        image_urls = [u for u, _ in staged]
-        staged_paths = [p for _, p in staged]
-    except StagingError:
-        logger.exception("Staging failed for user_id=%s", user_id)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Couldn't prepare images for upload. Try again.",
-        )
+    result = await _publish_carousel_from_data(
+        user_id=user_id,
+        slide_paths=slide_paths,
+        caption=carousel_data.get("caption") or "",
+        hashtags=carousel_data.get("hashtags") or "",
+        ig_account_id=str(ig_account_id),
+        token=tok["token"],
+    )
+
+    if result.get("ok"):
+        permalink = result.get("permalink")
+        text = f"✅ Posted to Instagram!\n{permalink}" if permalink else "✅ Posted to Instagram!"
+        await context.bot.send_message(chat_id=chat_id, text=text)
         return
 
-    try:
-        result = await publish_carousel(
-            ig_id=str(ig_account_id),
-            image_urls=image_urls,
-            caption=caption_full,
-            token=tok["token"],
+    err = result.get("error")
+    if err == "staging":
+        msg = "Couldn't prepare images for upload. Try again."
+    elif err == "auth":
+        msg = (
+            "Instagram rejected the token. Reconnect from Settings → "
+            "📷 Connect Instagram and try again."
         )
-        permalink = result.get("permalink")
-        if permalink:
-            text = f"✅ Posted to Instagram!\n{permalink}"
-        else:
-            text = "✅ Posted to Instagram!"
-        await context.bot.send_message(chat_id=chat_id, text=text)
-        logger.info(
-            "IG publish OK user_id=%s media_id=%s",
-            user_id, result.get("media_id"),
-        )
-    except PublishError as e:
-        if e.auth_failed:
-            clear_token(user_id)
-            logger.warning(
-                "IG publish auth failed user_id=%s, cleared token: %s", user_id, e,
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "Instagram rejected the token. Reconnect from Settings → "
-                    "📷 Connect Instagram and try again."
-                ),
-            )
-        else:
-            logger.warning("IG publish failed user_id=%s: %s", user_id, e)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="Couldn't publish to Instagram. Your images are safe — try again.",
-            )
-    except Exception:
-        logger.exception("Unexpected IG publish error user_id=%s", user_id)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Something went wrong publishing. Try again.",
-        )
-    finally:
-        cleanup_staged(staged_paths)
+    elif err == "publish":
+        msg = "Couldn't publish to Instagram. Your images are safe — try again."
+    else:
+        msg = "Something went wrong publishing. Try again."
+    await context.bot.send_message(chat_id=chat_id, text=msg)
 
 
 @require_auth
@@ -901,6 +968,166 @@ async def carousel_cancel_route(
             chat_id=update.effective_chat.id,
             text="Cancelled — nothing was posted.",
         )
+
+
+@require_auth
+async def carousel_schedule_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """📅 Schedule for later: snapshot the current render now (session is
+    only reliable at THIS step), then ask for a date/time."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = update.effective_chat.id
+
+    render_data = context.user_data.get("last_render")
+    carousel_data = context.user_data.get("last_carousel")
+    if not render_data or not render_data.get("paths") or not carousel_data:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Generate a carousel and its images first, then schedule.",
+        )
+        return
+
+    # Snapshot what we need so a later regenerate can't shift the metadata.
+    # The actual image files are copied to a per-post folder at capture time.
+    context.user_data["pending_schedule"] = {
+        "paths": list(render_data["paths"]),
+        "caption": carousel_data.get("caption") or "",
+        "hashtags": carousel_data.get("hashtags") or "",
+    }
+    context.user_data["awaiting_schedule_time"] = True
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "📅 Send the date & time to publish "
+            "(format: DD/MM/YYYY HH:MM, Israel time).\n\n"
+            "Example: 25/06/2026 09:00"
+        ),
+    )
+
+
+async def receive_schedule_time(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """message_bot branch for awaiting_schedule_time: parse + validate the
+    datetime, then persist and schedule. Re-prompts (flag stays set) on a
+    bad format or a past/absurd date."""
+    text = (update.message.text or "").strip()
+
+    dt = parse_schedule_input(text)
+    if dt is None:
+        await update.message.reply_text(
+            "Couldn't read that. Use DD/MM/YYYY HH:MM (Israel time), "
+            "e.g. 25/06/2026 09:00."
+        )
+        return  # keep the flag set
+
+    now = datetime.now(SCHEDULE_TZ)
+    if dt <= now:
+        await update.message.reply_text(
+            "That time is in the past. Send a future date & time "
+            "(DD/MM/YYYY HH:MM)."
+        )
+        return
+    if dt > now + timedelta(days=SCHEDULE_MAX_DAYS):
+        await update.message.reply_text(
+            f"That's too far ahead. Pick a time within {SCHEDULE_MAX_DAYS} days."
+        )
+        return
+
+    if not context.user_data.get("pending_schedule"):
+        context.user_data.pop("awaiting_schedule_time", None)
+        await update.message.reply_text(
+            "Lost the carousel to schedule. Generate it again and retry."
+        )
+        return
+
+    await _persist_and_schedule(update, context, dt)
+
+
+async def _persist_and_schedule(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, when: datetime
+) -> None:
+    """Copy slides to a permanent per-post folder, write the vault record,
+    and register the run_once job. The copy is the whole point: the post
+    owns its images and survives the next carousel overwriting cache/render."""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    pending = context.user_data.get("pending_schedule") or {}
+
+    # ig_account_id snapshot (the token itself is fetched fresh at fire time).
+    tok = get_token(user_id)
+    ig_account_id = (tok or {}).get("ig_account_id")
+    if not tok or not ig_account_id:
+        context.user_data.pop("awaiting_schedule_time", None)
+        context.user_data.pop("pending_schedule", None)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Connect Instagram first in Settings → 📷 Connect Instagram, "
+                 "then schedule.",
+        )
+        return
+
+    post_id = new_post_id()
+    image_dir = SCHEDULED_DIR / str(user_id) / post_id
+    image_dir.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    for i, src in enumerate(pending.get("paths", []), start=1):
+        src_path = Path(src)
+        if not src_path.exists():
+            continue
+        shutil.copy2(src_path, image_dir / f"slide_{i:02d}.png")
+        copied += 1
+
+    if copied == 0:
+        shutil.rmtree(image_dir, ignore_errors=True)
+        context.user_data.pop("awaiting_schedule_time", None)
+        context.user_data.pop("pending_schedule", None)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't save the images to schedule. Generate the carousel "
+                 "again and retry.",
+        )
+        return
+
+    record = {
+        "id": post_id,
+        "scheduled_ts": int(when.timestamp()),
+        "image_dir": str(image_dir),
+        "caption": pending.get("caption", ""),
+        "hashtags": pending.get("hashtags", ""),
+        "ig_account_id": str(ig_account_id),
+        "status": "pending",
+        "created_ts": int(time.time()),
+    }
+
+    user_data = load_user(user_id)
+    if user_data is None:
+        shutil.rmtree(image_dir, ignore_errors=True)
+        context.user_data.pop("awaiting_schedule_time", None)
+        context.user_data.pop("pending_schedule", None)
+        await context.bot.send_message(
+            chat_id=chat_id, text="No account info. Please complete onboarding first.",
+        )
+        return
+
+    add_scheduled_post(user_data, record)
+    save_user(user_id, user_data)
+    schedule_post_job(context.application, user_id, record)
+
+    context.user_data.pop("awaiting_schedule_time", None)
+    context.user_data.pop("pending_schedule", None)
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"📅 Scheduled for {format_ts(record['scheduled_ts'])} (Israel).\n"
+            "View or cancel it from 📅 Scheduled posts in the menu."
+        ),
+    )
 
 
 @require_auth

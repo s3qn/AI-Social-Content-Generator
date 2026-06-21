@@ -17,6 +17,7 @@ def _main_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("💡 Get post ideas", callback_data="menu_ideas")],
         [InlineKeyboardButton("👥 Competitors", callback_data="menu_competitors")],
         [InlineKeyboardButton("🔥 Viral posts", callback_data="viral_menu")],
+        [InlineKeyboardButton("📅 Scheduled posts", callback_data="scheduled_posts")],
         [
             InlineKeyboardButton("🔄 Refresh", callback_data="menu_refresh"),
             InlineKeyboardButton("⚙️ Settings", callback_data="main_settings"),

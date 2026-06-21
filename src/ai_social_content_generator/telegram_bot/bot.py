@@ -49,6 +49,11 @@ from ai_social_content_generator.telegram_bot.actions.settings import (
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
 )
+from ai_social_content_generator.telegram_bot.actions.scheduled_posts import (
+    scheduled_posts_show,
+    scheduled_cancel_route,
+    rebuild_scheduled_posts_on_startup,
+)
 from ai_social_content_generator.instagram.callback_server import (
     start_callback_server,
 )
@@ -70,6 +75,8 @@ from ai_social_content_generator.telegram_bot.actions.compose_carousel import (
     generate_carousel_images,
     carousel_individual_route,
     carousel_publish_route,
+    carousel_postnow_route,
+    carousel_schedule_route,
     carousel_confirm_route,
     carousel_cancel_route,
     carousel_edit_show,
@@ -100,6 +107,7 @@ async def _on_startup(application):
     OAuth callback server, the daily IG token-refresh job, and the
     existing reminder rebuild here so they all share PTB's event loop."""
     await rebuild_all_reminders_on_startup(application)
+    await rebuild_scheduled_posts_on_startup(application)
     schedule_token_refresh_job(application)
     port = int(os.getenv("OAUTH_CALLBACK_PORT", "8081"))
     runner = await start_callback_server(port)
@@ -284,6 +292,26 @@ if __name__ == '__main__':
     application.add_handler(
         CallbackQueryHandler(
             carousel_publish_route, pattern=r"^gen_carousel_publish$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_postnow_route, pattern=r"^gen_carousel_postnow$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_schedule_route, pattern=r"^gen_carousel_schedule$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            scheduled_posts_show, pattern=r"^scheduled_(posts|back)$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            scheduled_cancel_route, pattern=r"^sched_cancel_[a-f0-9]+$"
         )
     )
     application.add_handler(

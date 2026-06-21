@@ -26,6 +26,7 @@ def load_user(user_id: int) -> None | dict:
     data.setdefault("topics", [])
     data.setdefault("viral_keywords", [])
     data.setdefault("reminder_schedule", {"enabled": False, "slot": None})
+    data.setdefault("scheduled_posts", [])
     return data
 
 def save_user(user_id: int, data: dict) -> None:
