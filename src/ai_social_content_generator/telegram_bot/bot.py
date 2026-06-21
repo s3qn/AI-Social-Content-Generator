@@ -45,6 +45,9 @@ from ai_social_content_generator.telegram_bot.actions.settings import (
     receive_background_photo,
     receive_logo_document,
     customize_submenu_route,
+    carousel_instructions_show,
+    carousel_instr_edit,
+    carousel_instr_clear,
 )
 from ai_social_content_generator.telegram_bot.scheduler import (
     rebuild_all_reminders_on_startup,
@@ -265,6 +268,21 @@ if __name__ == '__main__':
         CallbackQueryHandler(
             customize_submenu_route,
             pattern=r"^customize_(background|logo|back|rerender)$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_instructions_show, pattern=r"^carousel_instructions$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_instr_edit, pattern=r"^carousel_instr_edit$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            carousel_instr_clear, pattern=r"^carousel_instr_clear$"
         )
     )
     application.add_handler(

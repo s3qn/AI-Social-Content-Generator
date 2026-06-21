@@ -44,7 +44,7 @@ async def settings_submenu_show(
     keyboard = [
         [InlineKeyboardButton("✏️ Edit niche", callback_data="settings_edit_niche")],
         [InlineKeyboardButton(scheduler_label, callback_data="settings_scheduler")],
-        [InlineKeyboardButton("🎨 Customize carousel", callback_data="settings_customize")],
+        [InlineKeyboardButton("🎨 Carousel settings", callback_data="settings_customize")],
         [InlineKeyboardButton(ig_label, callback_data="settings_connect_ig")],
         [InlineKeyboardButton("← Back", callback_data="settings_back")],
     ]
@@ -97,14 +97,17 @@ async def customize_submenu_show(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Sub-menu under Settings: Background + Logo + Re-render + Back."""
+    """Sub-menu under Settings: Background + Logo + My instructions +
+    Re-render + Back. The single carousel-settings home (consolidates the
+    former Customize submenu; My instructions is added here)."""
     keyboard = [
         [InlineKeyboardButton("🖼 Background", callback_data="customize_background")],
         [InlineKeyboardButton("🏷 Logo", callback_data="customize_logo")],
+        [InlineKeyboardButton("✍️ My instructions", callback_data="carousel_instructions")],
         [InlineKeyboardButton("🔄 Re-render current carousel", callback_data="customize_rerender")],
         [InlineKeyboardButton("← Back", callback_data="customize_back")],
     ]
-    text = "🎨 Customize carousel"
+    text = "🎨 Carousel settings"
     query = update.callback_query
     if query is not None:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -452,3 +455,111 @@ async def receive_logo_document(
                 )
     except Exception:
         logger.exception("Logo preview render failed for user_id=%s", user_id)
+
+
+# ----------------------------------------------------------------------
+# Custom carousel instructions (additive, subordinate to the SKILL rules).
+# ----------------------------------------------------------------------
+
+CAROUSEL_INSTRUCTIONS_MAX = 1500
+
+
+def _get_carousel_instructions(user_data: dict | None) -> str:
+    if not user_data:
+        return ""
+    return (user_data.get("custom_instructions") or {}).get("carousel", "").strip()
+
+
+@require_auth
+async def carousel_instructions_show(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Show the creator's current carousel instructions + Set/Clear."""
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+
+    current = _get_carousel_instructions(load_user(user_id))
+    body = f"Your current instructions:\n\n{current}" if current else "None set yet."
+
+    text = (
+        "✍️ My carousel instructions\n\n"
+        f"{body}\n\n"
+        "Your instructions guide tone and style. The post format and rules "
+        "stay intact."
+    )
+    keyboard = [
+        [InlineKeyboardButton("✏️ Set / edit", callback_data="carousel_instr_edit")],
+        [InlineKeyboardButton("🗑 Clear", callback_data="carousel_instr_clear")],
+        [InlineKeyboardButton("← Back", callback_data="settings_customize")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+@require_auth
+async def carousel_instr_edit(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Arm the text capture for the next message."""
+    query = update.callback_query
+    await query.answer()
+    context.user_data["awaiting_carousel_instructions"] = True
+    await query.edit_message_text(
+        "✍️ Send your instructions for carousels (tone, style, what to avoid).\n\n"
+        "They're added on top of the existing system, which keeps the post "
+        f"format and rules intact. Keep it under {CAROUSEL_INSTRUCTIONS_MAX} "
+        "characters."
+    )
+
+
+@require_auth
+async def carousel_instr_clear(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Clear the stored instructions; carousels return to default."""
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+
+    user_data = load_user(user_id)
+    if user_data is not None:
+        ci = user_data.get("custom_instructions")
+        if isinstance(ci, dict):
+            ci.pop("carousel", None)
+        save_user(user_id, user_data)
+
+    keyboard = [[InlineKeyboardButton("← Back", callback_data="carousel_instructions")]]
+    await query.edit_message_text(
+        "Cleared. Your carousels are back to the default style.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def receive_carousel_instructions(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """message_bot branch for awaiting_carousel_instructions. Validates
+    length, stores under custom_instructions.carousel, clears the flag."""
+    text = (update.message.text or "").strip()
+    if not text:
+        # Keep the flag set so the user can try again.
+        await update.message.reply_text(
+            "That's empty. Send the instructions you want carousels to follow."
+        )
+        return
+    if len(text) > CAROUSEL_INSTRUCTIONS_MAX:
+        await update.message.reply_text(
+            f"That's {len(text)} characters. Keep it under "
+            f"{CAROUSEL_INSTRUCTIONS_MAX} and send again."
+        )
+        return
+
+    user_id = update.effective_user.id
+    user_data = load_user(user_id) or {}
+    user_data.setdefault("custom_instructions", {})["carousel"] = text
+    save_user(user_id, user_data)
+    context.user_data.pop("awaiting_carousel_instructions", None)
+
+    await update.message.reply_text(
+        "✅ Saved. Your next carousels will follow these."
+    )

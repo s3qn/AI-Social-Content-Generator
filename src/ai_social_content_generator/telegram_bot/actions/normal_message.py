@@ -117,5 +117,12 @@ async def message_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await format_desc_receive(update, context)
         return
 
+    if context.user_data.get("awaiting_carousel_instructions"):
+        from ai_social_content_generator.telegram_bot.actions.settings import (
+            receive_carousel_instructions,
+        )
+        await receive_carousel_instructions(update, context)
+        return
+
     await menu_popup(update, context)
 

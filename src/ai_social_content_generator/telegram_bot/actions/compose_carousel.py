@@ -143,6 +143,16 @@ async def compose_carousel_from_picked(
     formatted["chosen_headline"] = chosen_headline
     prompt = skill_template.format(**formatted)
 
+    # Inject the creator's own instructions AFTER .format() via a sentinel
+    # replace: her free text never passes through str.format(), so literal
+    # braces (e.g. "use {emoji}") can't raise KeyError. Empty/old vaults
+    # resolve to a neutral line, keeping default output unchanged.
+    custom = (user_data.get("custom_instructions") or {}).get("carousel", "").strip()
+    prompt = prompt.replace(
+        "<<<CUSTOM_INSTRUCTIONS>>>",
+        custom if custom else "(none provided; use your default judgment)",
+    )
+
     claude_reply = await message_claude(prompt)
     raw_output = getattr(claude_reply, "stdout", None)
     returncode = getattr(claude_reply, "returncode", -1)

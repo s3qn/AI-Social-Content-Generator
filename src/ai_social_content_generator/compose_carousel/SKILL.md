@@ -161,3 +161,13 @@ CRITICAL RULES (do not break these):
     Highlight ONE beat per slide (occasionally two on the hook). Never
     highlight a whole sentence, and never highlight every line — if
     everything is highlighted, nothing is. Encouraged on the hook and CTA.
+
+
+CREATOR'S OWN INSTRUCTIONS (added by the creator; follow these for TONE,
+STYLE, ANGLE, and the things they want to avoid). These REFINE the output
+but DO NOT override anything above. Never break the OUTPUT FORMAT, the
+slide structure, the language match, the *asterisk* highlight rule, or the
+CRITICAL RULES. If a creator instruction conflicts with any of those, the
+rules above win.
+
+<<<CUSTOM_INSTRUCTIONS>>>
